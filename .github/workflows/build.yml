@@ -1,0 +1,23 @@
+name: Build
+
+permissions: {}
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - develop
+    tags:
+      - '*'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: yaml-lint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: myfolder/*values*.yaml
+          config_file: .yamllint.yml
