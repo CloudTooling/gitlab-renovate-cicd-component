@@ -1,0 +1,9 @@
+---
+extends: default
+yaml-files:
+  - .gitlab/*.yml
+  - '*.yml'
+  - '.yamllint'
+rules:
+  line-length: false
+  document-start: false
