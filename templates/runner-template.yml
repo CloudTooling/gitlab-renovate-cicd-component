@@ -1,0 +1,108 @@
+spec:
+  inputs:
+    stage:
+      default: test
+    log_level:
+      type: choice
+      options:
+        - debug
+        - info
+      default: debug
+    onboarding_config:
+      type: string
+      default: '{"$$schema": "https://docs.renovatebot.com/renovate-schema.json" }'
+    rules:
+      # FIXME: eventually, we'll want to define `null` as the default,
+      # but this is NOT support yet, see
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/440468
+      default: [{when: on_success}]
+      type: array
+      description: 'Defines the `rules` of the job.'
+    dry_run:
+      type: boolean
+      default: true
+    validate:
+      type: boolean
+      default: true
+    before_script:
+      default: []
+---
+
+variables:
+  RENOVATE_ENDPOINT: $CI_API_V4_URL
+  RENOVATE_PLATFORM: gitlab
+  RENOVATE_ONBOARDING_CONFIG: $[[ inputs.onboarding_config ]]
+  RENOVATE_OPTIMIZE_FOR_DISABLED: 'true'
+  RENOVATE_REPOSITORY_CACHE: 'enabled'
+  RENOVATE_LOG_FILE: renovate-log.ndjson
+  RENOVATE_LOG_FILE_LEVEL: $[[ inputs.log_level ]]
+  LOG_LEVEL: $[[ inputs.log_level ]]
+
+default:
+  image: ghcr.io/renovatebot/renovate:39.185.9
+
+.renovate:
+  # TODO extra extends
+  extends:
+    - .vault_setup_npm
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-renovate
+    paths:
+      - renovate/cache/renovate/repository/
+  script:
+    - renovate $RENOVATE_EXTRA_FLAGS
+
+.renovate_schedule:
+  extends: .renovate
+  stage: deploy
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  environment: production
+  artifacts:
+    when: always
+    expire_in: 1d
+    paths:
+      - '$RENOVATE_LOG_FILE'
+
+.renovate-config-validate:
+  image:
+    name: renovate/renovate:39.185.9
+    entrypoint: ['']
+  variables:
+    RENOVATE_CONFIG_FILES: "renovate.json renovate.json5"
+  script:
+    - |
+      for file in $RENOVATE_CONFIG_FILES; do
+        if [ -f $file ]; then
+          renovate-config-validator $file;
+        fi
+      done
+
+.renovate-config-check-on-change:
+  extends:
+    - .renovate-config-validate
+  rules:
+    - changes:
+        - renovate.json
+        - renovate.json5
+      exists:
+        - renovate.json
+        - renovate.json5
+    - $[[ inputs.rules ]]
+
+Test Renovate Config:
+  stage: test
+  extends:
+    - .renovate-config-check-on-change
+  rules: $[[ inputs.rules ]]
+
+Dry Run:
+  extends: .renovate
+  variables:
+    RENOVATE_DRY_RUN: full
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - $[[ inputs.rules ]]
