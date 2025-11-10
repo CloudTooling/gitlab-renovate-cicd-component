@@ -47,8 +47,7 @@ default:
 
 .renovate:
   # TODO extra extends
-  extends:
-    - .vault_setup_npm
+
   cache:
     key: ${CI_COMMIT_REF_SLUG}-renovate
     paths:
