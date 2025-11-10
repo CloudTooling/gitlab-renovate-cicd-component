@@ -15,7 +15,8 @@ spec:
       # FIXME: eventually, we'll want to define `null` as the default,
       # but this is NOT support yet, see
       # https://gitlab.com/gitlab-org/gitlab/-/issues/440468
-      default: [{when: on_success}]
+      default:
+        - when: on_success
       type: array
       description: 'Defines the `rules` of the job.'
     dry_run:
@@ -27,7 +28,6 @@ spec:
     before_script:
       default: []
 ---
-
 variables:
   RENOVATE_ENDPOINT: $CI_API_V4_URL
   RENOVATE_PLATFORM: gitlab
@@ -69,7 +69,7 @@ default:
     name: renovate/renovate:39.185.9
     entrypoint: ['']
   variables:
-    RENOVATE_CONFIG_FILES: "renovate.json renovate.json5"
+    RENOVATE_CONFIG_FILES: 'renovate.json renovate.json5'
   script:
     - |
       for file in $RENOVATE_CONFIG_FILES; do
