@@ -17,6 +17,9 @@ spec:
         - when: on_success
       type: array
       description: 'Defines the `rules` of the job.'
+    renovate_image:
+      type: string
+      default: 'renovatebot/renovate'
     renovate_version:
       type: string
       # renovate: datasource=github-tags depName=renovatebot/renovate
@@ -27,8 +30,6 @@ spec:
     validate:
       type: boolean
       default: true
-    before_script:
-      default: []
 ---
 variables:
   RENOVATE_ENDPOINT: $CI_API_V4_URL
@@ -41,8 +42,7 @@ variables:
   LOG_LEVEL: $[[ inputs.log_level ]]
 
 .renovate:
-  # TODO extra extends
-  image: renovatebot/renovate:$[[ inputs.renovate_version ]]
+  image: [[ inputs.renovate_image ]]:$[[ inputs.renovate_version ]]
   cache:
     key: ${CI_COMMIT_REF_SLUG}-renovate
     paths:
@@ -64,7 +64,7 @@ variables:
 
 .renovate-config-validate:
   image:
-    name: renovate/renovate:$[[ inputs.renovate_version ]]
+    name: [[ inputs.renovate_image ]]:$[[ inputs.renovate_version ]]
     entrypoint: ['']
   variables:
     RENOVATE_CONFIG_FILES: 'renovate.json renovate.json5'

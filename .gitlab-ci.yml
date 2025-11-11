@@ -1,6 +1,9 @@
 include:
   # include the component located in the current project from the current SHA
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner@$CI_COMMIT_SHA
+    inputs:
+      renovate_version: '39.261.3'
+      renovate_image: 'ghcr.io/renovatebot/renovate'
 
 default:
   image:
