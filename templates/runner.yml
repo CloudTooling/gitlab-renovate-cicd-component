@@ -41,7 +41,7 @@ variables:
   LOG_LEVEL: $[[ inputs.log_level ]]
 
 default:
-  image: ghcr.io/renovatebot/renovate:$[[ inputs.renovate_version ]]
+  image: renovatebot/renovate:$[[ inputs.renovate_version ]]
 
 .renovate:
   # TODO extra extends
@@ -67,7 +67,7 @@ default:
 
 .renovate-config-validate:
   image:
-    name: ghcr.io/renovate/renovate:$[[ inputs.renovate_version ]]
+    name: renovate/renovate:$[[ inputs.renovate_version ]]
     entrypoint: ['']
   variables:
     RENOVATE_CONFIG_FILES: 'renovate.json renovate.json5'
