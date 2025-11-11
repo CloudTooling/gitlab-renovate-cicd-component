@@ -1,9 +1,7 @@
 spec:
   inputs:
-    stage:
-      default: test
     log_level:
-      type: choice
+      type: string
       options:
         - debug
         - info
