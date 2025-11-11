@@ -40,12 +40,9 @@ variables:
   RENOVATE_LOG_FILE_LEVEL: $[[ inputs.log_level ]]
   LOG_LEVEL: $[[ inputs.log_level ]]
 
-default:
-  image: renovatebot/renovate:$[[ inputs.renovate_version ]]
-
 .renovate:
   # TODO extra extends
-
+  image: renovatebot/renovate:$[[ inputs.renovate_version ]]
   cache:
     key: ${CI_COMMIT_REF_SLUG}-renovate
     paths:
