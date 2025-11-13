@@ -1,0 +1,52 @@
+variables:
+  RENOVATE_ENDPOINT: $CI_API_V4_URL
+  RENOVATE_PLATFORM: gitlab
+  RENOVATE_OPTIMIZE_FOR_DISABLED: 'true'
+  RENOVATE_REPOSITORY_CACHE: 'enabled'
+  RENOVATE_LOG_FILE: renovate-log.ndjson
+
+.renovate:
+  image: $RENOVATE_IMAGE
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-renovate
+    paths:
+      - renovate/cache/renovate/repository/
+  script:
+    - renovate $RENOVATE_EXTRA_FLAGS
+
+.renovate_schedule:
+  extends: .renovate
+  stage: deploy
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  environment: production
+  artifacts:
+    when: always
+    expire_in: 1d
+    paths:
+      - '$RENOVATE_LOG_FILE'
+
+.renovate-config-validate:
+  image:
+    name: $RENOVATE_IMAGE
+    entrypoint: ['']
+  variables:
+    RENOVATE_CONFIG_FILES: 'renovate.json renovate.json5'
+  script:
+    - |
+      for file in $RENOVATE_CONFIG_FILES; do
+        if [ -f $file ]; then
+          renovate-config-validator $file;
+        fi
+      done
+
+.renovate-config-check-on-change:
+  extends:
+    - .renovate-config-validate
+  rules:
+    - changes:
+        - renovate.json
+        - renovate.json5
+      exists:
+        - renovate.json
+        - renovate.json5
