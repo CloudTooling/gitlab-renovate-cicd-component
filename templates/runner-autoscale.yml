@@ -46,8 +46,42 @@ include:
 Test Renovate Config:
   rules: $[[ inputs.rules ]]
 
-Dry Run:
-  extends: .renovate
+Generate Matrix:
+  stage: .pre
+  image: badouralix/curl-jq
+  variables:
+    # use common CI/CD vars with override option
+    GITLAB_API_URL: '$CI_API_V4_URL'
+  script:
+    - echo "Fetching groups from $GITLAB_API_URL ..."
+    # fetch all groups and store them in a file for later use (filter lost-and-found)
+    - >
+      curl --silent --header "PRIVATE-TOKEN: $RENOVATE_TOKEN"
+      "$GITLAB_API_URL/groups?per_page=100&top_level_only=false"
+      | jq -r '.[].full_path | select(. | contains("lost-and-found") | not)' > groups.txt
+    - |
+      # Convert list into comma-separated values for YAML array
+      GROUP_LIST=$(paste -sd, groups.txt | sed 's/,/, /g')
+      # Generate child pipeline config using heredoc (EOF)
+      cat <<EOF > child-pipeline.yml
+      stages:
+        - run
+
+      check:
+        stage: run
+        parallel:
+          matrix:
+            - GROUP: [${GROUP_LIST}]
+        extends: .renovate_schedule
+        variables:
+          RENOVATE_AUTODISCOVER_FILTER: '$GROUP/*'
+      EOF
+  artifacts:
+    paths:
+      - child-pipeline.yml
+
+Trigger Dry Run:
+  stage: run
   variables:
     RENOVATE_DRY_RUN: full
   rules:
@@ -56,7 +90,16 @@ Dry Run:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: never
     - $[[ inputs.rules ]]
+  trigger:
+    include:
+      - artifact: child-pipeline.yml
+        job: Generate Matrix
+    strategy: depend
 
-Checks:
+Trigger Checks:
   stage: run
-  extends: .renovate_schedule
+  trigger:
+    include:
+      - artifact: child-pipeline.yml
+        job: Generate Matrix
+    strategy: depend
