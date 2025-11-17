@@ -10,7 +10,7 @@ default:
     name: cloudtooling/dev-buildbox:1.1.2
     entrypoint: [""]
 
-stages: [build, test, release]
+stages: [build, test, run, release]
 
 Setup Renovate:
   variables:
