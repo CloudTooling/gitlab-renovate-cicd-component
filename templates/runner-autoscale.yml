@@ -19,7 +19,7 @@ spec:
       description: 'Defines the `rules` of the job.'
     renovate_image:
       type: string
-      default: 'renovatebot/renovate'
+      default: 'ghcr.io/renovatebot/renovate'
     renovate_version:
       type: string
       # renovate: datasource=github-tags depName=renovatebot/renovate
