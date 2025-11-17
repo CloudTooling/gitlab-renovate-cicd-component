@@ -41,9 +41,6 @@ include:
   - local: 'templates/shared/renovate.yml'
 
 Test Renovate Config:
-  stage: test
-  extends:
-    - .renovate-config-check-on-change
   rules: $[[ inputs.rules ]]
 
 Dry Run:
@@ -56,3 +53,7 @@ Dry Run:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: never
     - $[[ inputs.rules ]]
+
+Checks:
+  stage: run
+  extends: .renovate_schedule

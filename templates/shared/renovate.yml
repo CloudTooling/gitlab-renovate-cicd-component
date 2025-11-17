@@ -16,7 +16,7 @@ variables:
 
 .renovate_schedule:
   extends: .renovate
-  stage: deploy
+  stage: run
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
   environment: production
@@ -100,3 +100,8 @@ Setup Renovate:
       }
       echo "Setting up service account for Renovate ..."
       gitlab_create_serviceaccount "${GITLAB_TOKEN}" "${SERVICEACCOUNT_GROUP_ID}" "${BOT_NAME}" "${BOT_USERNAME}" "${BOT_TOKEN_NAME}"
+
+Test Renovate Config:
+  stage: test
+  extends:
+    - .renovate-config-check-on-change

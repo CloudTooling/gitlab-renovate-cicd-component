@@ -1,0 +1,108 @@
+spec:
+  inputs:
+    log_level:
+      type: string
+      options:
+        - debug
+        - info
+      default: debug
+    onboarding_config:
+      type: string
+      default: '{"$$schema": "https://docs.renovatebot.com/renovate-schema.json" }'
+    rules:
+      # FIXME: eventually, we'll want to define `null` as the default,
+      # but this is NOT support yet, see
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/440468
+      default:
+        - when: on_success
+      type: array
+      description: 'Defines the `rules` of the job.'
+    renovate_image:
+      type: string
+      default: 'renovatebot/renovate'
+    renovate_version:
+      type: string
+      # renovate: datasource=github-tags depName=renovatebot/renovate
+      default: '39.185.9'
+    dry_run:
+      type: boolean
+      default: true
+    validate:
+      type: boolean
+      default: true
+---
+variables:
+  RENOVATE_IMAGE: $[[ inputs.renovate_image ]]:$[[ inputs.renovate_version ]]
+  RENOVATE_ONBOARDING_CONFIG: $[[ inputs.onboarding_config ]]
+  RENOVATE_LOG_FILE_LEVEL: $[[ inputs.log_level ]]
+  LOG_LEVEL: $[[ inputs.log_level ]]
+
+include:
+  - local: 'templates/shared/renovate.yml'
+
+Test Renovate Config:
+  rules: $[[ inputs.rules ]]
+
+Generate Matrix:
+  stage: .pre
+  image: badouralix/curl-jq
+  variables:
+    # use common CI/CD vars with override option
+    GITLAB_API_URL: '$CI_API_V4_URL'
+  script:
+    - echo "Fetching groups from $GITLAB_API_URL ..."
+    # fetch all groups and store them in a file for later use (filter lost-and-found)
+    - >
+      curl --silent --header "PRIVATE-TOKEN: $RENOVATE_TOKEN"
+      "$GITLAB_API_URL/groups?per_page=100&top_level_only=false"
+      | jq -r '.[].full_path | select(. | contains("lost-and-found") | not)' > groups.txt
+    - |
+      # Convert list into comma-separated values for YAML array
+      GROUP_LIST=$(paste -sd, groups.txt | sed 's/,/, /g')
+      # Generate child pipeline config using heredoc (EOF)
+      cat <<EOF > child-pipeline.yml
+      stages:
+        - run
+      check:
+        stage: run
+        parallel:
+          matrix:
+            - GROUP: [${GROUP_LIST}]
+        environment: production
+        artifacts:
+          when: always
+          expire_in: 1d
+          paths:
+            - '$RENOVATE_LOG_FILE'
+        variables:
+          RENOVATE_AUTODISCOVER_FILTER: '$GROUP/*'
+      EOF
+  artifacts:
+    paths:
+      - child-pipeline.yml
+
+Trigger Dry Run:
+  stage: run
+  variables:
+    RENOVATE_DRY_RUN: full
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - $[[ inputs.rules ]]
+  trigger:
+    include:
+      - artifact: child-pipeline.yml
+        job: Generate Matrix
+    strategy: depend
+
+Trigger Checks:
+  stage: run
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  trigger:
+    include:
+      - artifact: child-pipeline.yml
+        job: Generate Matrix
+    strategy: depend
