@@ -7,10 +7,15 @@ include:
 
 default:
   image:
-    name: cloudtooling/dev-buildbox:1.0.1
+    name: cloudtooling/dev-buildbox:1.1.2
     entrypoint: [""]
 
 stages: [build, test, release]
+
+Setup Renovate:
+  variables:
+    SERVICEACCOUNT_GROUP_ID: 75898119
+    GITLAB_TOKEN: $GITLAB_SETUP_TOKEN
 
 Lint Templates and CI Config:
   stage: test

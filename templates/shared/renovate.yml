@@ -50,3 +50,53 @@ variables:
       exists:
         - renovate.json
         - renovate.json5
+
+Setup Renovate:
+  stage: .pre
+  rules:
+    - when: manual
+      allow_failure: true
+  manual_confirmation: 'Are you sure you want to rerun setup for Renovate?'
+  variables:
+    BOT_NAME: 'Gitlab Renovate Bot'
+    BOT_USERNAME: gitlab_renovate_bot
+    BOT_TOKEN_NAME: 'RENOVATE_TOKEN'
+  script:
+    - |
+      function glab_login() {
+        export GITLAB_TOKEN=${1:-$CI_JOB_TOKEN}
+        export GITLAB_HOST=$CI_SERVER_HOST
+        glab config set -g host $GITLAB_HOST
+        echo "Login to GitLab CLI (${GITLAB_HOST})..."
+        echo "$GITLAB_TOKEN" | glab auth login --hostname $GITLAB_HOST --stdin
+      }
+      # Create a service account within the given group
+      # Also set CI/CD variable in the executing gitlab project
+      # Needs a admin token as first param
+      function gitlab_create_serviceaccount() {
+        gitlabToken=$1
+        groupId=$2
+        botName=$3
+        botUsername=$4
+        botTokenName=$5
+        group=$6
+        glab_login $gitlabToken
+        echo "Creating service account ${botUsername} in group ${groupId} ..."
+        # Add service account and save userId, see https://docs.gitlab.com/api/group_service_accounts/#create-a-service-account-user
+        userId=$(echo -n "{\"name\":\"${botName}\", \"username\":\"${botUsername}\"}" \
+          | glab api --method POST --header content-type:application/json --input=- /groups/${groupId}/service_accounts | jq -r ".id")
+        echo "Created service account with id $userId"
+        # Create token, see https://docs.gitlab.com/api/group_service_accounts/#create-a-personal-access-token-for-a-service-account-user
+        token=$(echo -n "{\"name\":\"${botName}\", \"scopes\":[\"api\",\"read_user\",\"read_repository\",\"write_repository\"]}" \
+          | glab api --method POST --header content-type:application/json --input=- /groups/${groupId}/service_accounts/${userId}/personal_access_tokens | jq -r ".token")
+        # set new token as CI/CD var in this project, see https://gitlab.com/gitlab-org/cli/-/blob/main/docs/source/variable/set.md
+        if [ -z "${group}" ]; then
+            echo "Setting CI/CD variable in $group"
+            glab variable set $botTokenName "$token" -R $CI_PROJECT_PATH --description "Token for $botUsername ($userId)"
+        else
+            echo "Setting CI/CD variable in project"
+            glab variable set $botTokenName "$token" -g $group --description "Token for $botUsername ($userId)"
+        fi
+      }
+      echo "Setting up service account for Renovate ..."
+      gitlab_create_serviceaccount "${GITLAB_TOKEN}" "${SERVICEACCOUNT_GROUP_ID}" "${BOT_NAME}" "${BOT_USERNAME}" "${BOT_TOKEN_NAME}"
