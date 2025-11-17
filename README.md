@@ -1,5 +1,45 @@
 # Renovate
 
+Setup Renovate Runner within Gitlab:
+
+```
+include:
+  - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner@<VERSION>
+
+stages: [build, test, run]
+```
+
+Add a `config.js` in the project. e.g:
+```
+module.exports = {
+  token: process.env.GITHUB_COM_TOKEN,
+  hostRules: [
+    {
+      hostType: 'maven',
+      matchHost: process.env.CI_SERVER_HOST,
+      token: process.env.RENOVATE_TOKEN,
+    },
+    {
+      hostType: 'docker',
+      matchHost: process.env.CI_REGISTRY,
+      username: 'ci',
+      password: process.env.RENOVATE_TOKEN,
+    },
+  ],
+  forkProcessing: 'enabled',
+  platformAutomerge: true,
+  autodiscover: true,
+  allowScripts: true,
+  exposeAllEnv: true,
+  persistRepoData: true
+};
+```
+Add the following Tokens as CI/CD:
+
+* `RENOVATE_TOKEN` - Gitlab PAT for Renovate user, can be omitted with Service Accounts, see [##Setup](setup).
+* `GITHUB_TOKEN` - Github access token to omit api rate limit errors
+
+If you want to customize `Dry Run` just overwrite:
 
 ```
 include:
@@ -7,12 +47,10 @@ include:
 
 stages: [test, deploy]
 
----
-
-renovate - m13t:
-  extends: .renovate_schedule
+Dry Run:
   variables:
-    RENOVATE_AUTODISCOVER_FILTER: 'm13t/**'
+    # limit dry run to a filter
+    RENOVATE_AUTODISCOVER_FILTER: '...'
 ```
 
 ## Setup
