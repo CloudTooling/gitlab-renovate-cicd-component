@@ -8,7 +8,7 @@ module.exports = {
     },
     {
       hostType: 'docker',
-      matchHost: ghcr.io,
+      matchHost: 'ghcr.io',
       username: process.env.GITHUB_COM_USER,
       password: process.env.GITHUB_COM_TOKEN,
     },
