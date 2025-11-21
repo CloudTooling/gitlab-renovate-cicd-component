@@ -10,6 +10,9 @@ default:
     name: cloudtooling/dev-buildbox:1.1.2
     entrypoint: [""]
 
+variables:
+  RENOVATE_AUTODISCOVER_FILTER: "cloudtooling/**"
+
 stages: [build, test, run, release]
 
 Setup Renovate:
