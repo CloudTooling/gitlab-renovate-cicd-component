@@ -8,20 +8,26 @@ module.exports = {
     },
     {
       hostType: 'docker',
+      matchHost: ghcr.io,
+      username: process.env.GITHUB_COM_USER,
+      password: process.env.GITHUB_COM_TOKEN,
+    },
+    {
+      hostType: 'docker',
       matchHost: process.env.CI_REGISTRY,
       username: 'ci',
       password: process.env.RENOVATE_TOKEN,
     },
   ],
-  registryAliases:{
-    "$CI_REGISTRY": process.env.CI_REGISTRY,
-    "$CI_SERVER_FQDN": process.env.CI_SERVER_FQDN,
-    "$CI_SERVER_HOST": process.env.CI_SERVER_FQDN
+  registryAliases: {
+    $CI_REGISTRY: process.env.CI_REGISTRY,
+    $CI_SERVER_FQDN: process.env.CI_SERVER_FQDN,
+    $CI_SERVER_HOST: process.env.CI_SERVER_FQDN,
   },
   forkProcessing: 'enabled',
   platformAutomerge: true,
   autodiscover: true,
   allowScripts: true,
   exposeAllEnv: true,
-  persistRepoData: true
+  persistRepoData: true,
 };
