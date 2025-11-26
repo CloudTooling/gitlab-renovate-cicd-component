@@ -1,3 +1,18 @@
+# [0.3.0](https://gitlab.com/cloudtooling/renovate/compare/v0.2.0...v0.3.0) (2025-11-26)
+
+
+### Bug Fixes
+
+* **Runner:** Add ghcr docker ([9acc0df](https://gitlab.com/cloudtooling/renovate/commit/9acc0dfad878d84f8416bd91f658c57ee45092fe))
+* **Runner:** Correcting config ([3bae757](https://gitlab.com/cloudtooling/renovate/commit/3bae7576198f5005a67489c61a655795784a6b9f))
+
+
+### Features
+
+* **Renovate:** Adding config.js ([b47a277](https://gitlab.com/cloudtooling/renovate/commit/b47a2772657db4d58dd6c2844c4d5f6472d3e405))
+
+
+
 # [0.2.0](https://gitlab.com/cloudtooling/renovate/compare/v0.1.5...v0.2.0) (2025-11-20)
 
 
