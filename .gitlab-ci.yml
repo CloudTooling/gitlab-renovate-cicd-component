@@ -3,7 +3,7 @@ include:
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner@$CI_COMMIT_SHA
     inputs:
       # renovate: datasource=github-tags depName=renovatebot/renovate
-      renovate_version: '42.85.4'
+      renovate_version: '42.85.8'
       renovate_image: 'ghcr.io/renovatebot/renovate'
 
 default:
