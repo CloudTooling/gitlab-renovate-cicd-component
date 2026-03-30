@@ -8,7 +8,7 @@ include:
 
 default:
   image:
-    name: cloudtooling/dev-buildbox:1.4.0
+    name: cloudtooling/dev-buildbox:1.5.2
     entrypoint: [""]
 
 variables:
