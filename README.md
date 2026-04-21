@@ -20,15 +20,14 @@ stages: [build, test, run]
 
 This template reads groups of Renovate Gitlab User and builds the checks dynamic:
 
-![](doc/docs/images/gitlab-autoscaler-I.png)
+![](docs/images/gitlab-autoscaler-I.png)
 
 For each group the last leaf is used and then the check iterates the projects in each group to reduce overall runtime via parallel runs:
 
-![](doc/docs/images/gitlab-autoscaler-II.png)
-
+![](docs/images/gitlab-autoscaler-II.png)
 
 Add a `config.js` in the project. e.g:
-```
+```js
 module.exports = {
   token: process.env.GITHUB_COM_TOKEN,
   hostRules: [
@@ -95,7 +94,7 @@ Setup Renovate:
 
 Then run the manual job:
 
-![](doc/docs/images/renovate-service-account-setup.png)
+![](docs/images/renovate-service-account-setup.png)
 
 Then check the job output. It should look like this:
 ```
