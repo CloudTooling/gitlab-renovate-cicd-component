@@ -2,12 +2,30 @@
 
 Setup Renovate Runner within Gitlab:
 
-```
+```yaml
 include:
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner@<VERSION>
 
 stages: [build, test, run]
 ```
+
+To improve scaling in bigger project use
+
+```yaml
+include:
+  - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner-autoscale@<VERSION>
+
+stages: [build, test, run]
+```
+
+This template reads groups of Renovate Gitlab User and builds the checks dynamic:
+
+![](doc/docs/images/gitlab-autoscaler-I.png)
+
+For each group the last leaf is used and then the check iterates the projects in each group to reduce overall runtime via parallel runs:
+
+![](doc/docs/images/gitlab-autoscaler-II.png)
+
 
 Add a `config.js` in the project. e.g:
 ```
@@ -71,7 +89,7 @@ By default the `$CI_JOB_TOKEN` is used. To adjust assign to variable `$GITLAB_TO
 ```
 Setup Renovate:
   variables:
-  SERVICEACCOUNT_GROUP_ID: ...
+    SERVICEACCOUNT_GROUP_ID: ...
     GITLAB_TOKEN: $CI_JOB_TOKEN
 ```
 
