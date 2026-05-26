@@ -42,6 +42,8 @@ variables:
 
 include:
   - local: 'templates/shared/renovate.yml'
+    inputs:
+      before_script: $[[ inputs.before_script ]]
 
 Test Renovate Config:
   rules: $[[ inputs.rules ]]
