@@ -69,12 +69,7 @@ Generate Matrix:
       BEFORE_SCRIPT
 
       # Build a YAML block for before_script with correct indentation for the child pipeline
-      if [ -s before_script.txt ]; then
-        BEFORE_SCRIPT_SECTION="before_script:
-$(awk '{print "          - " $0}' before_script.txt)"
-      else
-        BEFORE_SCRIPT_SECTION="before_script: []"
-      fi
+      BEFORE_SCRIPT_SECTION=$([ -s before_script.txt ] && { printf 'before_script:'; awk '{printf "\n    - %s", $0}' before_script.txt; } || echo 'before_script: []')
 
       # Generate child pipeline config using heredoc (EOF)
       cat <<EOF > child-pipeline.yml
