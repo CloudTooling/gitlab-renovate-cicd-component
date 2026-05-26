@@ -30,6 +30,9 @@ spec:
     validate:
       type: boolean
       default: true
+    before_script:
+      default: []
+      description: 'Defines the `before_script` of the job, useful for extra extends like docker login.'
 ---
 variables:
   RENOVATE_IMAGE: $[[ inputs.renovate_image ]]:$[[ inputs.renovate_version ]]
@@ -39,6 +42,8 @@ variables:
 
 include:
   - local: 'templates/shared/renovate.yml'
+    inputs:
+      before_script: $[[ inputs.before_script ]]
 
 Test Renovate Config:
   rules: $[[ inputs.rules ]]

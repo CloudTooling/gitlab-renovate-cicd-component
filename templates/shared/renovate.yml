@@ -1,3 +1,8 @@
+spec:
+  inputs:
+    # NOTE: see the using templates for their description
+    before_script: {type: array}
+---
 variables:
   RENOVATE_ENDPOINT: $CI_API_V4_URL
   RENOVATE_PLATFORM: gitlab
@@ -11,6 +16,7 @@ variables:
     key: ${CI_COMMIT_REF_SLUG}-renovate
     paths:
       - renovate/cache/renovate/repository/
+  before_script: $[[ inputs.before_script ]]
   script:
     - renovate $RENOVATE_EXTRA_FLAGS
 

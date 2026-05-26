@@ -30,9 +30,9 @@ spec:
     validate:
       type: boolean
       default: true
-    # add details for extra extends if needed, e.g. docker login
     before_script:
       default: []
+      description: 'Defines the `before_script` of the job, useful for extra extends like docker login.'
 ---
 variables:
   RENOVATE_IMAGE: $[[ inputs.renovate_image ]]:$[[ inputs.renovate_version ]]
@@ -62,6 +62,20 @@ Generate Matrix:
     - |
       # Convert list into comma-separated values for YAML array
       GROUP_LIST=$(paste -sd, groups.txt | sed 's/,/, /g')
+
+      # read before_script from pipeline inputs, array need special handling in bash
+      cat <<'BEFORE_SCRIPT' | jq -r '.[]' > before_script.txt
+      $[[ inputs.before_script ]]
+      BEFORE_SCRIPT
+
+      # Build a YAML block for before_script with correct indentation for the child pipeline
+      if [ -s before_script.txt ]; then
+        BEFORE_SCRIPT_SECTION="before_script:
+$(awk '{print "          - " $0}' before_script.txt)"
+      else
+        BEFORE_SCRIPT_SECTION="before_script: []"
+      fi
+
       # Generate child pipeline config using heredoc (EOF)
       cat <<EOF > child-pipeline.yml
       stages:
@@ -77,6 +91,7 @@ Generate Matrix:
           key: \${CI_COMMIT_REF_SLUG}-renovate
           paths:
             - renovate/cache/renovate/repository/
+        ${BEFORE_SCRIPT_SECTION}
         script:
           - renovate $RENOVATE_EXTRA_FLAGS
         artifacts:
