@@ -1,0 +1,323 @@
+spec:
+  inputs:
+    stage:
+      type: string
+      default: run
+      description: 'Pipeline stage the migration job runs in.'
+    image:
+      type: string
+      # renovate: datasource=docker depName=cloudtooling/dev-buildbox
+      default: 'cloudtooling/dev-buildbox:1.11.2'
+      description: 'Image that provides `glab`, `jq` and `bash`.'
+    gitlab_url:
+      type: string
+      default: '$CI_SERVER_URL'
+      description: 'Base URL of the GitLab instance.'
+    token_variable:
+      type: string
+      default: 'RENOVATE_TOKEN'
+      description: >-
+        Name of the CI/CD variable that holds a PAT / group access token with
+        `api` scope for the CURRENT bot user. The job scans issues created by
+        this user, so the token must belong to the bot Renovate now runs as.
+    title:
+      type: string
+      default: 'Dependency Dashboard'
+      description: >-
+        Value of Renovate `dependencyDashboardTitle`. Only issues whose title is
+        exactly this string are treated as dashboards.
+    scope:
+      type: string
+      options:
+        - group
+        - projects
+        - all-membership
+      default: group
+      description: >-
+        How target projects are discovered: `group` scans a group and its
+        subgroups, `projects` uses an explicit list, `all-membership` scans every
+        project the token is a member of.
+    group:
+      type: string
+      default: '$CI_PROJECT_NAMESPACE'
+      description: 'Group id or full path to scan when `scope` is `group`.'
+    projects:
+      type: string
+      default: ''
+      description: >-
+        Comma-separated project ids or full paths, used when `scope` is
+        `projects`.
+    keep_author:
+      type: string
+      default: ''
+      description: >-
+        Username of the CURRENT bot. In projects that have duplicate dashboards
+        every dashboard NOT authored by this user is closed. Robust for access
+        token rotation, which creates a brand-new bot user. Mutually exclusive
+        with `close_author`.
+    close_author:
+      type: string
+      default: ''
+      description: >-
+        Comma-separated username(s) of the OLD bot(s) whose dashboards should be
+        closed. Mutually exclusive with `keep_author`.
+    include_archived:
+      type: boolean
+      default: false
+      description: 'Also scan archived projects.'
+    allow_single:
+      type: boolean
+      default: false
+      description: >-
+        Also act on projects that have a single dashboard. By default the job
+        only touches projects that have more than one open dashboard, so a
+        correct lone dashboard is never closed.
+    force_close_all:
+      type: boolean
+      default: false
+      description: 'Permit closing the last remaining dashboard in a project.'
+    execute:
+      type: boolean
+      default: false
+      description: >-
+        Actually close issues. The default is a dry-run that only prints what it
+        would do.
+    rules:
+      type: array
+      default:
+        - when: manual
+          allow_failure: true
+      description: 'Rules controlling when the job is added to the pipeline.'
+---
+Migrate Renovate Dashboards:
+  stage: $[[ inputs.stage ]]
+  image:
+    name: $[[ inputs.image ]]
+    entrypoint: ['']
+  rules: $[[ inputs.rules ]]
+  manual_confirmation: >-
+    Close orphaned Renovate dependency dashboards left behind by a bot-user
+    change?
+  variables:
+    MIGRATOR_GITLAB_URL: '$[[ inputs.gitlab_url ]]'
+    MIGRATOR_TOKEN_VARIABLE: '$[[ inputs.token_variable ]]'
+    MIGRATOR_TITLE: '$[[ inputs.title ]]'
+    MIGRATOR_SCOPE: '$[[ inputs.scope ]]'
+    MIGRATOR_GROUP: '$[[ inputs.group ]]'
+    MIGRATOR_PROJECTS: '$[[ inputs.projects ]]'
+    MIGRATOR_KEEP_AUTHOR: '$[[ inputs.keep_author ]]'
+    MIGRATOR_CLOSE_AUTHOR: '$[[ inputs.close_author ]]'
+    MIGRATOR_INCLUDE_ARCHIVED: '$[[ inputs.include_archived ]]'
+    MIGRATOR_ALLOW_SINGLE: '$[[ inputs.allow_single ]]'
+    MIGRATOR_FORCE_CLOSE_ALL: '$[[ inputs.force_close_all ]]'
+    MIGRATOR_EXECUTE: '$[[ inputs.execute ]]'
+  script:
+    - |
+      #!/usr/bin/env bash
+      # Close duplicate Renovate "Dependency Dashboard" issues left behind after
+      # a GitLab bot-user change (username change, or access-token rotation which
+      # spawns a brand-new bot user). Renovate finds its dashboard by scanning
+      # only issues created by the currently authenticated user, so after a bot
+      # change the old dashboard is orphaned and a fresh one is opened. This job
+      # closes the orphaned copies and keeps the one the current bot owns.
+      #
+      # The mig_* functions below are covered by tests/user-migrator.bats, which
+      # sources this block with MIGRATOR_SOURCED=1 so main() does not run. Keep
+      # them side-effect free at load time.
+
+      # mig_bool "<value>" -> "true" only for the literal string "true", else "false".
+      mig_bool() { [ "${1:-}" = "true" ] && echo true || echo false; }
+
+      # mig_urlenc "<string>" -> URL-encoded form for use inside an API path.
+      mig_urlenc() { jq -rn --arg v "${1:-}" '$v|@uri'; }
+
+      # mig_validate_authors "<keep_author>" "<close_author>"
+      #   -> non-zero with a message unless exactly one of the two is set.
+      mig_validate_authors() {
+        if [ -n "${1:-}" ] && [ -n "${2:-}" ]; then
+          echo "Set only one of keep_author / close_author." >&2
+          return 1
+        fi
+        if [ -z "${1:-}" ] && [ -z "${2:-}" ]; then
+          echo "Set one of keep_author / close_author." >&2
+          return 1
+        fi
+      }
+
+      # mig_filter_dashboards "<title>" ; issues JSON array on stdin
+      #   -> JSON array of issues whose trimmed title is exactly "<title>".
+      #      GitLab issue search is fuzzy, so an exact filter is required.
+      mig_filter_dashboards() {
+        jq -c --arg t "${1:-}" '[ .[] | select((.title | gsub("^\\s+|\\s+$"; "")) == $t) ]'
+      }
+
+      # mig_select_close "<keep_author>" "<close_author_csv>" ; dashboards JSON on stdin
+      #   -> JSON array of dashboards to close. With close_author only those authors
+      #      are closed; otherwise every author other than keep_author is closed.
+      mig_select_close() {
+        if [ -n "${2:-}" ]; then
+          jq -c --arg a "${2}" \
+            '($a | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))) as $c
+             | [ .[] | select((.author.username // "") as $u | ($c | index($u)) != null) ]'
+        else
+          jq -c --arg k "${1:-}" '[ .[] | select((.author.username // "") != $k) ]'
+        fi
+      }
+
+      # mig_select_keep "<dashboards JSON>" "<to-close JSON>"
+      #   -> dashboards minus to-close, matched by issue iid.
+      mig_select_keep() {
+        jq -cn --argjson all "${1}" --argjson close "${2}" \
+          '($close | map(.iid)) as $ci | [ $all[] | select(.iid as $i | ($ci | index($i)) == null) ]'
+      }
+
+      # mig_collect_projects "<scope>" "<group>" "<projects_csv>" "<archived>"
+      #   -> one "<id>\t<path_with_namespace>" line per target project.
+      mig_collect_projects() {
+        local scope="${1}" group="${2}" projects_csv="${3}" archived="${4}"
+        case "${scope}" in
+          projects)
+            [ -n "${projects_csv}" ] || { echo "scope=projects requires 'projects'." >&2; return 1; }
+            local p IFS=','
+            for p in ${projects_csv}; do
+              p="$(echo "${p}" | xargs)"
+              [ -n "${p}" ] || continue
+              glab api "projects/$(mig_urlenc "${p}")" | jq -r '"\(.id)\t\(.path_with_namespace)"'
+            done
+            ;;
+          group)
+            [ -n "${group}" ] || { echo "scope=group requires 'group'." >&2; return 1; }
+            glab api --paginate \
+              "groups/$(mig_urlenc "${group}")/projects?include_subgroups=true&archived=${archived}&simple=true&with_issues_enabled=true&per_page=100" \
+              | jq -r '.[] | "\(.id)\t\(.path_with_namespace)"'
+            ;;
+          all-membership)
+            glab api --paginate \
+              "projects?membership=true&min_access_level=30&archived=${archived}&simple=true&with_issues_enabled=true&per_page=100" \
+              | jq -r '.[] | "\(.id)\t\(.path_with_namespace)"'
+            ;;
+          *)
+            echo "Unknown scope '${scope}'." >&2
+            return 1
+            ;;
+        esac
+      }
+
+      # mig_list_dashboards "<project_id>" "<title>"
+      #   -> JSON array of exact-title open dashboards in the project.
+      mig_list_dashboards() {
+        glab api --paginate \
+          "projects/${1}/issues?state=opened&search=$(mig_urlenc "${2}")&in=title&per_page=100" \
+          | mig_filter_dashboards "${2}"
+      }
+
+      # mig_close_issue "<project_id>" "<issue_iid>"
+      mig_close_issue() {
+        glab api --method PUT "projects/${1}/issues/${2}?state_event=close" >/dev/null
+      }
+
+      main() {
+        set -euo pipefail
+
+        local TITLE="${MIGRATOR_TITLE}"
+        local GITLAB_URL="${MIGRATOR_GITLAB_URL%/}"
+
+        # --- resolve the bot token from the configured CI/CD variable ---
+        local TOKEN
+        TOKEN="$(printenv "${MIGRATOR_TOKEN_VARIABLE}" || true)"
+        if [ -z "${TOKEN}" ]; then
+          echo "No token in CI/CD variable '${MIGRATOR_TOKEN_VARIABLE}' (needs 'api' scope)." >&2
+          exit 1
+        fi
+
+        mig_validate_authors "${MIGRATOR_KEEP_AUTHOR}" "${MIGRATOR_CLOSE_AUTHOR}" || exit 1
+
+        local EXECUTE ALLOW_SINGLE FORCE_CLOSE_ALL ARCHIVED
+        EXECUTE="$(mig_bool "${MIGRATOR_EXECUTE}")"
+        ALLOW_SINGLE="$(mig_bool "${MIGRATOR_ALLOW_SINGLE}")"
+        FORCE_CLOSE_ALL="$(mig_bool "${MIGRATOR_FORCE_CLOSE_ALL}")"
+        ARCHIVED="$(mig_bool "${MIGRATOR_INCLUDE_ARCHIVED}")"
+
+        # --- log in to glab ---
+        export GITLAB_TOKEN="${TOKEN}"
+        export GITLAB_HOST="${CI_SERVER_HOST:-${GITLAB_URL#*://}}"
+        glab config set -g host "${GITLAB_HOST}" >/dev/null
+        echo "Login to GitLab CLI (${GITLAB_HOST}) ..."
+        echo "${GITLAB_TOKEN}" | glab auth login --hostname "${GITLAB_HOST}" --stdin
+
+        local MODE="DRY-RUN"
+        [ "${EXECUTE}" = true ] && MODE="EXECUTE" || true
+        echo
+        echo "[${MODE}] ${GITLAB_URL}  title='${TITLE}'"
+        echo "         scope=${MIGRATOR_SCOPE}  keep_author='${MIGRATOR_KEEP_AUTHOR}'  close_author='${MIGRATOR_CLOSE_AUTHOR}'"
+        echo
+
+        local PROJECTS_TSV
+        if ! PROJECTS_TSV="$(mig_collect_projects "${MIGRATOR_SCOPE}" "${MIGRATOR_GROUP}" "${MIGRATOR_PROJECTS}" "${ARCHIVED}")"; then
+          exit 1
+        fi
+
+        local total_close=0 total_kept=0 errors=0 touched=0
+        local pid pname dbs count close_json keep_json close_count keep_count
+        local iid author created
+
+        while IFS="$(printf '\t')" read -r pid pname; do
+          [ -n "${pid}" ] || continue
+
+          if ! dbs="$(mig_list_dashboards "${pid}" "${TITLE}")"; then
+            echo "! ${pname}: failed to list issues" >&2
+            errors=$((errors + 1))
+            continue
+          fi
+
+          count="$(echo "${dbs}" | jq 'length')"
+          [ "${count}" -gt 0 ] || continue
+          if [ "${count}" -lt 2 ] && [ "${ALLOW_SINGLE}" != true ]; then
+            continue
+          fi
+
+          close_json="$(echo "${dbs}" | mig_select_close "${MIGRATOR_KEEP_AUTHOR}" "${MIGRATOR_CLOSE_AUTHOR}")"
+          keep_json="$(mig_select_keep "${dbs}" "${close_json}")"
+          close_count="$(echo "${close_json}" | jq 'length')"
+          keep_count="$(echo "${keep_json}" | jq 'length')"
+
+          [ "${close_count}" -gt 0 ] || continue
+          if [ "${keep_count}" -eq 0 ] && [ "${FORCE_CLOSE_ALL}" != true ]; then
+            echo "~ ${pname}: would close ALL ${count} dashboards; skipping (set force_close_all: true to override)" >&2
+            continue
+          fi
+
+          touched=$((touched + 1))
+          echo "# ${pname}"
+          echo "${keep_json}" | jq -r \
+            '.[] | "    keep        !\(.iid)  by @\(.author.username // "?")  (\(.created_at[0:10]))"'
+          total_kept=$((total_kept + keep_count))
+
+          while IFS='|' read -r iid author created; do
+            [ -n "${iid}" ] || continue
+            if [ "${EXECUTE}" = true ]; then
+              if mig_close_issue "${pid}" "${iid}"; then
+                echo "    closed      !${iid}  by @${author}  (${created})"
+              else
+                echo "    FAILED      !${iid}  by @${author}  (${created})" >&2
+                errors=$((errors + 1))
+              fi
+            else
+              echo "    close(dry)  !${iid}  by @${author}  (${created})"
+            fi
+            total_close=$((total_close + 1))
+          done <<CLOSE_ROWS
+      $(echo "${close_json}" | jq -r '.[] | "\(.iid)|\(.author.username // "?")|\(.created_at[0:10])"')
+      CLOSE_ROWS
+        done <<PROJECT_ROWS
+      ${PROJECTS_TSV}
+      PROJECT_ROWS
+
+        echo
+        echo "Projects touched: ${touched}  |  keep: ${total_kept}  |  $([ "${EXECUTE}" = true ] && echo closed || echo 'to close'): ${total_close}  |  errors: ${errors}"
+        [ "${errors}" -eq 0 ]
+      }
+
+      if [ -z "${MIGRATOR_SOURCED:-}" ]; then
+        main "$@"
+      fi

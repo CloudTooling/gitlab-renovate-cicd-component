@@ -31,6 +31,22 @@ Lint Templates and CI Config:
   script:
     - yamllint -c .yamllint.yml templates/* .gitlab-ci.yml
 
+Unit-Tests Templates:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'push'
+      changes:
+        - templates/**/*
+        - tests/**/*
+  script:
+    - bats --report-formatter junit --print-output-on-failure --output reports tests/
+  artifacts:
+    when: always
+    paths:
+      - reports/report.xml
+    reports:
+      junit: reports/report.xml
+
 
 # If the pipeline is for a new tag with a semantic version, and all previous jobs succeed,
 # create the release.

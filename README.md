@@ -75,6 +75,45 @@ Dry Run:
     RENOVATE_AUTODISCOVER_FILTER: '...'
 ```
 
+## Migrating the bot user
+
+Renovate's GitLab platform locates its *Dependency Dashboard* by scanning only
+issues **created by the currently authenticated user**. When the bot user
+changes — a username change, or an access-token rotation that spawns a
+brand-new service-account user — the new user cannot see the old dashboard, so
+Renovate opens a fresh one and the previous dashboard is orphaned. The result is
+duplicate dashboards across your projects.
+
+The `user-migrator` component adds a manual job that closes the orphaned
+dashboards and keeps the one the current bot owns:
+
+```yaml
+include:
+  - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/user-migrator@<VERSION>
+    inputs:
+      # group id or full path to scan (incl. subgroups)
+      group: my-group
+      # username of the CURRENT bot; every other dashboard in a project
+      # that has duplicates is closed (robust for token rotation)
+      keep_author: gitlab_renovate_bot
+      # flip to true once the dry-run output looks right
+      execute: false
+
+stages: [run]
+```
+
+The job is a **dry-run by default** and prints exactly what it would close; set
+`execute: true` to act. It only touches projects that have more than one open
+dashboard (override with `allow_single: true`) and never closes the last
+remaining dashboard (override with `force_close_all: true`).
+
+Instead of `keep_author` you can pass `close_author` with a comma-separated list
+of the old bot username(s) to close explicitly. The token used is read from the
+CI/CD variable named by `token_variable` (default `RENOVATE_TOKEN`) and must
+belong to the current bot with `api` scope. Use `scope: projects` with
+`projects: a/b,c/d` or `scope: all-membership` to change how target projects are
+discovered.
+
 ## Setup
 
 If your Gitlab license allows creation of service accounts you can run the manual job `Setup Renovate`.

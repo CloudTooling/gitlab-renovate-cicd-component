@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Minimal `glab` stand-in for the bats tests. It records every invocation and
+# answers `glab api` calls from fixture files.
+#
+#   GLAB_MOCK_DIR    directory holding <fixture>.json response bodies
+#   GLAB_MOCK_CALLS  file the raw argument line is appended to (optional)
+set -eu
+
+if [ -n "${GLAB_MOCK_CALLS:-}" ]; then
+  printf '%s\n' "$*" >> "${GLAB_MOCK_CALLS}"
+fi
+
+# Everything that is not `glab api ...` (config, auth login, ...) is a no-op.
+if [ "${1:-}" != "api" ]; then
+  exit 0
+fi
+shift
+
+method=GET
+path=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --method | -X) shift; method="$1" ;;
+    --paginate | -*) ;;
+    *) [ -n "${path}" ] || path="$1" ;;
+  esac
+  shift
+done
+
+case "${method}:${path}" in
+  GET:groups/*/projects*)
+    cat "${GLAB_MOCK_DIR}/group-projects.json"
+    ;;
+  GET:projects/*/issues*)
+    rest=${path#projects/}
+    pid=${rest%%/*}
+    if [ -f "${GLAB_MOCK_DIR}/issues-${pid}.json" ]; then
+      cat "${GLAB_MOCK_DIR}/issues-${pid}.json"
+    else
+      echo '[]'
+    fi
+    ;;
+  GET:projects/*)
+    cat "${GLAB_MOCK_DIR}/project.json"
+    ;;
+  PUT:projects/*/issues/*)
+    echo '{"state":"closed"}'
+    ;;
+  *)
+    echo "glab-mock: unhandled request: ${method} ${path}" >&2
+    exit 1
+    ;;
+esac
