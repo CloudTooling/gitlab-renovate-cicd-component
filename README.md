@@ -26,7 +26,11 @@ For each group the last leaf is used and then the check iterates the projects in
 
 ![](docs/images/gitlab-autoscaler-II.png)
 
+
+## Configuration
+
 Add a `config.js` in the project. e.g:
+
 ```js
 module.exports = {
   token: process.env.GITHUB_COM_TOKEN,
@@ -56,10 +60,23 @@ module.exports = {
   persistRepoData: true
 };
 ```
+
 Add the following Tokens as CI/CD:
 
 * `RENOVATE_TOKEN` - Gitlab PAT for Renovate user, can be omitted with Service Accounts, see [##Setup](setup).
 * `GITHUB_TOKEN` - Github access token to omit api rate limit errors
+
+For hosted npm, e.g. nexus use this:
+
+```js
+module.exports = {
+  // Configure npm registries
+  npmrc: `
+registry="https://<nexus-host>/repository/npm-group/"
+@<private-group>:registry="https://<nexus-host>/repository/npm-private"
+`,
+...
+```
 
 If you want to customize `Dry Run` just overwrite:
 
@@ -118,13 +135,14 @@ discovered.
 
 If your Gitlab license allows creation of service accounts you can run the manual job `Setup Renovate`.
 Just add the desired group id where the service account should be created via `variables`:
-```
+
+```yaml
     SERVICEACCOUNT_GROUP_ID: ...
 ```
 
 By default the `$CI_JOB_TOKEN` is used. To adjust assign to variable `$GITLAB_TOKEN`:
 
-```
+```yaml
 Setup Renovate:
   variables:
     SERVICEACCOUNT_GROUP_ID: ...
@@ -136,7 +154,8 @@ Then run the manual job:
 ![](docs/images/renovate-service-account-setup.png)
 
 Then check the job output. It should look like this:
-```
+
+```bash
 Login to GitLab CLI (gitlab.com)...
 WARNING: One of GITLAB_TOKEN, GITLAB_ACCESS_TOKEN, OAUTH_TOKEN environment variables is set. If you don't want to use it for glab, unset it.
 Creating service account gitlab_renovate_bot in group 117849439 ...
