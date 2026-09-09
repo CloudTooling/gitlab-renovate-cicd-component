@@ -1,3 +1,15 @@
+spec:
+  inputs:
+    release_type:
+      description: 'Type of version bump in semver meaning'
+      options: ['major', 'minor', 'patch', 'custom']
+      default: null
+    release_version:
+      description: 'Custom release version'
+      rules:
+        - if: $[[ inputs.release_type ]] == 'custom'
+          default: null
+---
 include:
   # include the component located in the current project from the current SHA
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner@$CI_COMMIT_SHA
@@ -10,6 +22,134 @@ default:
   image:
     name: cloudtooling/dev-buildbox:1.11.2
     entrypoint: [""]
+
+
+# -- Gitlab Helper Scripts
+.gitlab:
+  script:
+    - |
+      function maven_setup(){
+        mkdir -p ~/.m2
+        cat $MAVEN_SETTINGS_XML > ~/.m2/settings.xml
+      }
+      increment_patch_version() {
+        increment_version -p "$1"
+      }
+
+      increment_minor_version() {
+        increment_version -m "$1"
+      }
+
+      increment_major_version() {
+        increment_version -M "$1"
+      }
+
+      function setEnvReleaseVersion() {
+        currentVersion=$1
+        case "$RELEASE" in
+          Custom)
+            echo "Building custom release"
+            export RELEASE_VERSION="${RELEASE_VERSION:?ERROR: RELEASE_VERSION should not be empty!}" ;;
+          Major)
+            echo "Building major release"
+            export RELEASE_VERSION=$(increment_major_version "$currentVersion") ;;
+          Minor)
+            echo "Building minor release"
+            export RELEASE_VERSION=$(increment_minor_version "$currentVersion") ;;
+          Patch)
+            echo "Building patch release"
+            export RELEASE_VERSION=$(increment_patch_version "$currentVersion") ;;
+          *)
+            echo "WARN: RELEASE = '$RELEASE' not found, abort job"
+            exit 1 ;;
+        esac
+      }
+      function getLatestReleaseVersion(){
+        glab api "projects/:id/releases" | jq -r '.[0].tag_name' | sed 's/^v//'
+      }
+      function git_config() {
+        # shellcheck disable=SC2153
+        export GIT_PROJECT_URL=$(echo $CI_PROJECT_URL | sed 's/https:\/\///').git
+        # shellcheck disable=SC2153
+        export GITLAB_TOKEN=${GITLAB_TOKEN:-$CI_JOB_TOKEN}
+        git remote set-url origin https://ci:$GITLAB_TOKEN@$GIT_PROJECT_URL
+        git config --global --add safe.directory $CI_PROJECT_DIR
+        git config --global user.email "ci@m13t.de"
+        git config --global user.name "ci"
+        # shellcheck disable=SC2153
+        git config --global --add safe.directory $CI_PROJECT_DIR
+        # don't add ignore files and don't warn
+        git config advice.addIgnoredFile false
+        # Fetch latest changes
+        git fetch --all --tags || true
+      }
+      function glab_login(){
+        export GITLAB_HOST=$CI_SERVER_HOST
+        export GITLAB_TOKEN=${GITLAB_TOKEN:-$CI_JOB_TOKEN}
+        glab config set -g host $GITLAB_HOST
+        echo "$GITLAB_TOKEN" | glab auth login --hostname $GITLAB_HOST --stdin
+      }
+      # Creates a releases for the given version and tag
+      function gitlab_create_release(){
+        releaseVersion=$1
+        ref=$2
+        notes=$3
+        glab_login
+        if [ -f "$notes" ]
+        then
+          glab release create $ref --name "Release $releaseVersion" --notes-file "$notes" -R $CI_PROJECT_PATH
+        else
+          glab release create $ref --name "Release $releaseVersion" --notes "$notes" -R $CI_PROJECT_PATH
+        fi
+      }
+
+      function create_changelog() {
+        configFile=${1:-config.json}
+        if [ -f "package.json" ]; then
+          configFile="package.json"
+        fi
+        commit=${2:-true}
+        echo "Creating changelog for ${RELEASE_VERSION}"
+        ensure_cliff_config
+        touch CHANGELOG.md
+        git-cliff --config cliff.toml --tag "v${RELEASE_VERSION}" --unreleased --prepend CHANGELOG.md
+        if [[ "$commit" == "true" ]]; then
+          git add CHANGELOG.md $configFile cliff.toml
+          git commit -m "chore: Release ${RELEASE_VERSION}"
+        fi
+      }
+      function update_version_and_create_changelog() {
+        configFile=${1:-config.json}
+        commit=${2:-true}
+        echo "Starting release of ${RELEASE_VERSION}"
+        jq '.version = "'${RELEASE_VERSION}'"' $configFile > $configFile.new
+        mv $configFile.new $configFile
+        if [[ "$commit" == "true" ]]; then
+          git add $configFile
+          git commit -m "Release ${RELEASE_VERSION}"
+        fi
+        create_changelog $configFile $commit
+      }
+      function create_changelog_for_current_version() {
+        releaseNotes='RELEASE_NOTES.md'
+        # clean tags before
+        git fetch --tags --force --prune --prune-tags || true
+        echo "Creating changelog for release"
+        ensure_cliff_config
+        git-cliff --config cliff.toml --latest | grep -v '^## \[' | sed -e '/./,$!d' -e :a -e '/^\n*$/{$d;N;ba' -e '}' > $releaseNotes  || true
+        # trim whitespaces
+        sed -i -e '/./,$!d' -e :a -e '/^\n*$/{$d;N;ba' -e '}' $releaseNotes || true
+      }
+
+.default_rules:
+  rules:
+    # Prevent MR pipelines
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: never
+    # Don't run on release pipelines
+    - if: $GITLAB_CI && "$[[ inputs.release_type ]]" == "true"
+      when: never
+    - when: always
 
 variables:
   RENOVATE_AUTODISCOVER_FILTER: "cloudtooling/**"
@@ -24,6 +164,7 @@ Setup Renovate:
 Lint Templates and CI Config:
   stage: test
   rules:
+    - !reference [.default_rules, rules]
     - if: $CI_PIPELINE_SOURCE == 'push'
       changes:
         - templates/**/*
@@ -47,15 +188,66 @@ Unit-Tests Templates:
     reports:
       junit: reports/report.xml
 
+Release:
+  stage: release
+  rules:
+    - if: '"$[[ inputs.release_type ]]" != ""'
+    - when: never
+  script:
+    - !reference [.gitlab, script]
+    - |
+      git_config
+      glab_login
+      git_clear_tags
+    - |
+      echo "Performing release..."
+      git checkout -B "$CI_COMMIT_REF_NAME"
+      RELEASE=$[[ inputs.release_type ]]
+      currentVersion=$(jq -r ".version" config.json || echo "0.0.1")
+      # Please note: mvn automatically sets the patch version to SNAPSHOT
+      case "$RELEASE" in
+        Custom)
+          echo "Building custom release"
+          export RELEASE_VERSION="${$[[ inputs.release_version ]]:?ERROR: RELEASE_VERSION should not be empty!}" ;;
+        Major)
+          echo "Building major release"
+          export RELEASE_VERSION=$(increment_major_version "$currentVersion") ;;
+        Minor)
+          echo "Building minor release"
+          export RELEASE_VERSION=$(increment_minor_version "$currentVersion") ;;
+        Patch)
+          echo "Building patch release"
+          export RELEASE_VERSION="$currentVersion" ;;
+        *)
+          echo "WARN: RELEASE = '$RELEASE' not found, abort job"
+          exit 1 ;;
+      esac
+      update_version_and_create_changelog
+      echo "Pushing tags for version $RELEASE_VERSION"
+      git tag v$RELEASE_VERSION
+      git push --tags -o ci.variable="RELEASE_SOURCE_BRANCH=$CI_COMMIT_BRANCH"
+      # push changes
+      git push origin $CI_COMMIT_REF_NAME -o ci.skip
 
-# If the pipeline is for a new tag with a semantic version, and all previous jobs succeed,
-# create the release.
 create-release:
   stage: release
   image: registry.gitlab.com/gitlab-org/cli:latest
-  script: echo "Creating release $CI_COMMIT_TAG"
   rules:
     - if: $CI_COMMIT_TAG
-  release:
-    tag_name: $CI_COMMIT_TAG
-    description: "Release $CI_COMMIT_TAG of components repository $CI_PROJECT_PATH"
+  script:
+    - !reference [.gitlab, script]
+    - |
+      git_config
+      glab_login
+    - |
+      export RELEASE_VERSION=$(echo $CI_COMMIT_TAG | sed -e "s/v//g";)
+      echo "Finish release for $RELEASE_VERSION (Tag $CI_COMMIT_TAG)"
+      echo "Using branch $RELEASE_SOURCE_BRANCH"
+      git checkout $RELEASE_SOURCE_BRANCH
+      git pull origin $RELEASE_SOURCE_BRANCH
+    - |
+      echo "Generating changelog for release"
+      # Create RELEASE_NOTES.md
+      create_changelog_for_current_version
+      echo "Creating gitlab release for ${RELEASE_VERSION}"
+      gitlab_create_release "${RELEASE_VERSION}" "${CI_COMMIT_TAG}" "RELEASE_NOTES.md"

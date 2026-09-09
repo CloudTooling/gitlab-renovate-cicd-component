@@ -137,6 +137,15 @@ username(s) to close instead. The token is read from the CI/CD variable named by
 `token_variable` (default `RENOVATE_TOKEN`) and must belong to the current bot
 with `api` scope. Use `scope: projects` with `projects: a/b,c/d` or
 `scope: all-membership` to change how target projects are discovered.
+Instead of `keep_author` you can pass `close_author` with a comma-separated list
+of the old bot username(s) to close explicitly. The token used is read from the
+CI/CD variable named by `token_variable` (default `RENOVATE_TOKEN`) and must
+belong to the current bot with `api` scope. Use `scope: projects` with
+`projects: a/b,c/d` or `scope: all-membership` to change how target projects are
+discovered.
+## Issues
+
+https://github.com/CloudTooling/gitlab-renovate-cicd-component/issues
 
 ## Setup
 
