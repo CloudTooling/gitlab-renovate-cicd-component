@@ -2,8 +2,10 @@
 # Minimal `glab` stand-in for the bats tests. It records every invocation and
 # answers `glab api` calls from fixture files.
 #
-#   GLAB_MOCK_DIR    directory holding <fixture>.json response bodies
-#   GLAB_MOCK_CALLS  file the raw argument line is appended to (optional)
+#   GLAB_MOCK_DIR       directory holding <fixture>.json response bodies
+#   GLAB_MOCK_CALLS     file the raw argument line is appended to (optional)
+#   GLAB_MOCK_USER      username reported by `glab api user` (default: new-bot)
+#   GLAB_MOCK_CLONE_IID iid returned by the issue clone endpoint (default: 900)
 set -eu
 
 if [ -n "${GLAB_MOCK_CALLS:-}" ]; then
@@ -28,8 +30,14 @@ while [ $# -gt 0 ]; do
 done
 
 case "${method}:${path}" in
+  GET:user)
+    echo "{\"username\":\"${GLAB_MOCK_USER:-new-bot}\"}"
+    ;;
   GET:groups/*/projects*)
     cat "${GLAB_MOCK_DIR}/group-projects.json"
+    ;;
+  POST:projects/*/issues/*/clone*)
+    echo "{\"iid\":${GLAB_MOCK_CLONE_IID:-900},\"title\":\"Dependency Dashboard\",\"author\":{\"username\":\"${GLAB_MOCK_USER:-new-bot}\"}}"
     ;;
   GET:projects/*/issues*)
     rest=${path#projects/}

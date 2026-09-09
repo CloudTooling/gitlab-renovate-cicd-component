@@ -24,6 +24,7 @@ setup() {
 
   export GLAB_MOCK_DIR="${BATS_TEST_TMPDIR}/fixtures"
   export GLAB_MOCK_CALLS="${BATS_TEST_TMPDIR}/calls.log"
+  export GLAB_MOCK_USER="new-bot"
   mkdir -p "${GLAB_MOCK_DIR}"
   : > "${GLAB_MOCK_CALLS}"
 
@@ -88,10 +89,9 @@ jqc() { jq -c "$@"; }
   [ "${status}" -eq 0 ]
 }
 
-@test "mig_validate_authors: neither is rejected" {
+@test "mig_validate_authors: neither is valid (keep_author is defaulted later)" {
   run mig_validate_authors "" ""
-  [ "${status}" -ne 0 ]
-  [[ "${output}" == *"Set one of keep_author / close_author"* ]]
+  [ "${status}" -eq 0 ]
 }
 
 @test "mig_validate_authors: both is rejected" {
@@ -267,6 +267,58 @@ JSON
 }
 
 # ---------------------------------------------------------------------------
+# mig_pick_clone_source
+# ---------------------------------------------------------------------------
+
+@test "mig_pick_clone_source: picks the most recently updated dashboard" {
+  src="$(printf '%s' '[
+    {"iid":10,"author":{"username":"old-bot"},"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-02-01T00:00:00Z"},
+    {"iid":13,"author":{"username":"older-bot"},"created_at":"2023-01-01T00:00:00Z","updated_at":"2025-07-09T00:00:00Z"}
+  ]' | mig_pick_clone_source)"
+  [ "${src}" = "13|older-bot|2025-07-09" ]
+}
+
+@test "mig_pick_clone_source: falls back to created_at when updated_at is absent" {
+  src="$(printf '%s' '[
+    {"iid":10,"author":{"username":"old-bot"},"created_at":"2024-01-01T00:00:00Z"},
+    {"iid":11,"author":{"username":"old-bot"},"created_at":"2024-09-01T00:00:00Z"}
+  ]' | mig_pick_clone_source)"
+  [ "${src}" = "11|old-bot|2024-09-01" ]
+}
+
+# ---------------------------------------------------------------------------
+# mig_clone_issue
+# ---------------------------------------------------------------------------
+
+@test "mig_clone_issue: POSTs to the clone endpoint and returns the new iid" {
+  export GLAB_MOCK_CLONE_IID=777
+  run mig_clone_issue 3 10 true
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "777" ]
+  grep -q "projects/3/issues/10/clone" "${GLAB_MOCK_CALLS}"
+  grep -q "with_notes=true" "${GLAB_MOCK_CALLS}"
+  grep -q "to_project_id=3" "${GLAB_MOCK_CALLS}"
+  grep -q "POST" "${GLAB_MOCK_CALLS}"
+}
+
+@test "mig_clone_issue: forwards with_notes=false" {
+  run mig_clone_issue 3 10 false
+  [ "${status}" -eq 0 ]
+  grep -q "with_notes=false" "${GLAB_MOCK_CALLS}"
+}
+
+# ---------------------------------------------------------------------------
+# mig_current_user
+# ---------------------------------------------------------------------------
+
+@test "mig_current_user: returns the authenticated username" {
+  export GLAB_MOCK_USER="renovate-sa"
+  run mig_current_user
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "renovate-sa" ]
+}
+
+# ---------------------------------------------------------------------------
 # main() end-to-end, against the mock
 # ---------------------------------------------------------------------------
 
@@ -277,6 +329,8 @@ run_main() {
     MIGRATOR_TITLE="Dependency Dashboard" \
     MIGRATOR_SCOPE="group" MIGRATOR_GROUP="grp" MIGRATOR_PROJECTS="" \
     MIGRATOR_KEEP_AUTHOR="${KEEP:-}" MIGRATOR_CLOSE_AUTHOR="${CLOSE:-}" \
+    MIGRATOR_CLONE="${CLONE:-false}" \
+    MIGRATOR_CLONE_WITH_NOTES="${CLONE_WITH_NOTES:-true}" \
     MIGRATOR_INCLUDE_ARCHIVED="false" \
     MIGRATOR_ALLOW_SINGLE="${ALLOW_SINGLE:-false}" \
     MIGRATOR_FORCE_CLOSE_ALL="${FORCE_CLOSE_ALL:-false}" \
@@ -285,9 +339,14 @@ run_main() {
     bash "${MIGRATOR_LIB}"
 }
 
-@test "main: dry-run reports the orphan but closes nothing" {
+# A single project 'grp/a' (id 1) whose open dashboards are the given JSON.
+fixture_project() {
   echo '[{"id":1,"path_with_namespace":"grp/a"}]' > "${GLAB_MOCK_DIR}/group-projects.json"
-  cat > "${GLAB_MOCK_DIR}/issues-1.json" <<'JSON'
+  cat > "${GLAB_MOCK_DIR}/issues-1.json"
+}
+
+@test "main: dry-run reports the orphan but closes nothing" {
+  fixture_project <<'JSON'
 [{"iid":10,"title":"Dependency Dashboard","author":{"username":"old-bot"},"created_at":"2024-01-02T00:00:00Z"},
  {"iid":11,"title":"Dependency Dashboard","author":{"username":"new-bot"},"created_at":"2025-06-01T00:00:00Z"}]
 JSON
@@ -299,46 +358,118 @@ JSON
   ! grep -q "state_event=close" "${GLAB_MOCK_CALLS}"
 }
 
-@test "main: --execute closes the orphaned dashboard" {
-  echo '[{"id":1,"path_with_namespace":"grp/a"}]' > "${GLAB_MOCK_DIR}/group-projects.json"
-  cat > "${GLAB_MOCK_DIR}/issues-1.json" <<'JSON'
+@test "main: --execute closes the orphaned dashboard (bot already owns one)" {
+  fixture_project <<'JSON'
 [{"iid":10,"title":"Dependency Dashboard","author":{"username":"old-bot"},"created_at":"2024-01-02T00:00:00Z"},
  {"iid":11,"title":"Dependency Dashboard","author":{"username":"new-bot"},"created_at":"2025-06-01T00:00:00Z"}]
 JSON
-  KEEP="new-bot" EXECUTE="true" run_main
+  KEEP="new-bot" CLONE="true" EXECUTE="true" run_main
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"closed      !10"* ]]
   grep -q "projects/1/issues/10" "${GLAB_MOCK_CALLS}"
   grep -q "state_event=close" "${GLAB_MOCK_CALLS}"
   ! grep -q "issues/11?state_event=close" "${GLAB_MOCK_CALLS}"
+  ! grep -q "clone" "${GLAB_MOCK_CALLS}"
 }
 
 @test "main: a lone correct dashboard is left untouched" {
-  echo '[{"id":1,"path_with_namespace":"grp/a"}]' > "${GLAB_MOCK_DIR}/group-projects.json"
-  cat > "${GLAB_MOCK_DIR}/issues-1.json" <<'JSON'
+  fixture_project <<'JSON'
 [{"iid":11,"title":"Dependency Dashboard","author":{"username":"new-bot"},"created_at":"2025-06-01T00:00:00Z"}]
 JSON
-  KEEP="new-bot" EXECUTE="true" run_main
+  KEEP="new-bot" CLONE="true" EXECUTE="true" run_main
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"Projects touched: 0"* ]]
+  ! grep -q "state_event=close" "${GLAB_MOCK_CALLS}"
+  ! grep -q "clone" "${GLAB_MOCK_CALLS}"
+}
+
+@test "main: clone disabled -> a lone orphan is left untouched" {
+  fixture_project <<'JSON'
+[{"iid":10,"title":"Dependency Dashboard","author":{"username":"old-bot"},"created_at":"2024-01-02T00:00:00Z"}]
+JSON
+  KEEP="new-bot" CLONE="false" EXECUTE="true" run_main
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"Projects touched: 0"* ]]
   ! grep -q "state_event=close" "${GLAB_MOCK_CALLS}"
 }
 
-@test "main: refuses to close the last dashboard without force_close_all" {
-  echo '[{"id":1,"path_with_namespace":"grp/a"}]' > "${GLAB_MOCK_DIR}/group-projects.json"
-  cat > "${GLAB_MOCK_DIR}/issues-1.json" <<'JSON'
+@test "main: clone disabled -> refuses to close all without force_close_all" {
+  fixture_project <<'JSON'
 [{"iid":10,"title":"Dependency Dashboard","author":{"username":"old-bot"},"created_at":"2024-01-02T00:00:00Z"},
  {"iid":13,"title":"Dependency Dashboard","author":{"username":"older-bot"},"created_at":"2023-01-02T00:00:00Z"}]
 JSON
-  CLOSE="old-bot, older-bot" EXECUTE="true" run_main
+  CLOSE="old-bot, older-bot" CLONE="false" EXECUTE="true" run_main
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"would close ALL 2 dashboards"* ]]
   ! grep -q "state_event=close" "${GLAB_MOCK_CALLS}"
 }
 
-@test "main: exits non-zero when the author selection is invalid" {
-  echo '[]' > "${GLAB_MOCK_DIR}/group-projects.json"
-  run_main
+@test "main: clones a lone orphan to the current bot, then closes it" {
+  export GLAB_MOCK_CLONE_IID=900
+  fixture_project <<'JSON'
+[{"iid":10,"title":"Dependency Dashboard","author":{"username":"old-bot"},"created_at":"2024-01-02T00:00:00Z","updated_at":"2025-05-01T00:00:00Z"}]
+JSON
+  KEEP="new-bot" CLONE="true" EXECUTE="true" run_main
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"cloned      !10 -> !900"* ]]
+  [[ "${output}" == *"now owned by @new-bot"* ]]
+  [[ "${output}" == *"closed      !10"* ]]
+  grep -q "projects/1/issues/10/clone" "${GLAB_MOCK_CALLS}"
+  grep -q "with_notes=true" "${GLAB_MOCK_CALLS}"
+  # clone happens before the close
+  clone_line="$(grep -n 'issues/10/clone' "${GLAB_MOCK_CALLS}" | cut -d: -f1)"
+  close_line="$(grep -n 'issues/10?state_event=close' "${GLAB_MOCK_CALLS}" | cut -d: -f1)"
+  [ "${clone_line}" -lt "${close_line}" ]
+}
+
+@test "main: clone dry-run announces the clone but writes nothing" {
+  fixture_project <<'JSON'
+[{"iid":10,"title":"Dependency Dashboard","author":{"username":"old-bot"},"created_at":"2024-01-02T00:00:00Z"}]
+JSON
+  KEEP="new-bot" CLONE="true" run_main
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"clone(dry)  !10 -> new dashboard owned by @new-bot"* ]]
+  [[ "${output}" == *"to clone: 1"* ]]
+  ! grep -qE "clone\?|state_event=close" "${GLAB_MOCK_CALLS}"
+}
+
+@test "main: forwards clone_with_notes=false" {
+  fixture_project <<'JSON'
+[{"iid":10,"title":"Dependency Dashboard","author":{"username":"old-bot"},"created_at":"2024-01-02T00:00:00Z"}]
+JSON
+  KEEP="new-bot" CLONE="true" CLONE_WITH_NOTES="false" EXECUTE="true" run_main
+  [ "${status}" -eq 0 ]
+  grep -q "with_notes=false" "${GLAB_MOCK_CALLS}"
+}
+
+@test "main: a failed clone leaves the project untouched and fails the job" {
+  export GLAB_MOCK_CLONE_IID=null
+  fixture_project <<'JSON'
+[{"iid":10,"title":"Dependency Dashboard","author":{"username":"old-bot"},"created_at":"2024-01-02T00:00:00Z"}]
+JSON
+  KEEP="new-bot" CLONE="true" EXECUTE="true" run_main
   [ "${status}" -ne 0 ]
-  [[ "${output}" == *"Set one of keep_author / close_author"* ]]
+  [[ "${output}" == *"FAILED clone !10"* ]]
+  [[ "${output}" == *"errors: 1"* ]]
+  ! grep -q "state_event=close" "${GLAB_MOCK_CALLS}"
+}
+
+@test "main: keep_author defaults to the authenticated user" {
+  export GLAB_MOCK_USER="renovate-sa"
+  fixture_project <<'JSON'
+[{"iid":10,"title":"Dependency Dashboard","author":{"username":"ex-renovate"},"created_at":"2024-01-02T00:00:00Z"},
+ {"iid":11,"title":"Dependency Dashboard","author":{"username":"renovate-sa"},"created_at":"2025-06-01T00:00:00Z"}]
+JSON
+  CLONE="true" EXECUTE="true" run_main
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"keep_author defaulted to the authenticated user '@renovate-sa'"* ]]
+  [[ "${output}" == *"closed      !10"* ]]
+  [[ "${output}" == *"keep        !11"* ]]
+}
+
+@test "main: exits non-zero when both keep_author and close_author are set" {
+  echo '[]' > "${GLAB_MOCK_DIR}/group-projects.json"
+  KEEP="new-bot" CLOSE="old-bot" run_main
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"only one"* ]]
 }

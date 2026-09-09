@@ -24,3 +24,9 @@ CI runs the same command in the `Test User Migrator Script` job
 The template YAML is the single source of truth: `extract.sh` writes the job
 script to a temp file and the test sources it with `MIGRATOR_SOURCED=1`, which
 skips `main()` so the functions can be exercised in isolation.
+
+The `glab` stand-in is steered with env vars: `GLAB_MOCK_DIR` (fixture bodies:
+`group-projects.json`, `issues-<id>.json`, `project.json`), `GLAB_MOCK_CALLS`
+(request log the tests assert against), `GLAB_MOCK_USER` (`glab api user`), and
+`GLAB_MOCK_CLONE_IID` (iid returned by the issue clone endpoint; set to `null`
+to simulate a failed clone).

@@ -53,14 +53,28 @@ spec:
       description: >-
         Username of the CURRENT bot. In projects that have duplicate dashboards
         every dashboard NOT authored by this user is closed. Robust for access
-        token rotation, which creates a brand-new bot user. Mutually exclusive
-        with `close_author`.
+        token rotation, which creates a brand-new bot user. Defaults to the
+        username the token authenticates as. Mutually exclusive with
+        `close_author`.
     close_author:
       type: string
       default: ''
       description: >-
         Comma-separated username(s) of the OLD bot(s) whose dashboards should be
         closed. Mutually exclusive with `keep_author`.
+    clone:
+      type: boolean
+      default: true
+      description: >-
+        When a project has an orphaned dashboard but none owned by the current
+        bot, clone the newest orphan to the current bot (preserving its checkbox
+        state and, optionally, its notes) before closing the old copies. This
+        makes closing the last dashboard safe, so `force_close_all` is not
+        needed for the clone path.
+    clone_with_notes:
+      type: boolean
+      default: true
+      description: 'Copy the comment history when cloning (`with_notes=true`).'
     include_archived:
       type: boolean
       default: false
@@ -69,19 +83,22 @@ spec:
       type: boolean
       default: false
       description: >-
-        Also act on projects that have a single dashboard. By default the job
-        only touches projects that have more than one open dashboard, so a
-        correct lone dashboard is never closed.
+        Also act on projects that have a single dashboard when NOT cloning. By
+        default the job only touches projects that have more than one open
+        dashboard, so a correct lone dashboard is never closed. The clone path
+        ignores this guard because it recreates the dashboard first.
     force_close_all:
       type: boolean
       default: false
-      description: 'Permit closing the last remaining dashboard in a project.'
+      description: >-
+        Permit closing the last remaining dashboard in a project without cloning
+        it first. Ignored (and unnecessary) when `clone` handles the project.
     execute:
       type: boolean
       default: false
       description: >-
-        Actually close issues. The default is a dry-run that only prints what it
-        would do.
+        Actually clone and close issues. The default is a dry-run that only
+        prints what it would do.
     rules:
       type: array
       default:
@@ -96,8 +113,8 @@ Migrate Renovate Dashboards:
     entrypoint: ['']
   rules: $[[ inputs.rules ]]
   manual_confirmation: >-
-    Close orphaned Renovate dependency dashboards left behind by a bot-user
-    change?
+    Migrate Renovate dependency dashboards left behind by a bot-user change
+    (clone the orphan to the current bot, then close the old copies)?
   variables:
     MIGRATOR_GITLAB_URL: '$[[ inputs.gitlab_url ]]'
     MIGRATOR_TOKEN_VARIABLE: '$[[ inputs.token_variable ]]'
@@ -107,6 +124,8 @@ Migrate Renovate Dashboards:
     MIGRATOR_PROJECTS: '$[[ inputs.projects ]]'
     MIGRATOR_KEEP_AUTHOR: '$[[ inputs.keep_author ]]'
     MIGRATOR_CLOSE_AUTHOR: '$[[ inputs.close_author ]]'
+    MIGRATOR_CLONE: '$[[ inputs.clone ]]'
+    MIGRATOR_CLONE_WITH_NOTES: '$[[ inputs.clone_with_notes ]]'
     MIGRATOR_INCLUDE_ARCHIVED: '$[[ inputs.include_archived ]]'
     MIGRATOR_ALLOW_SINGLE: '$[[ inputs.allow_single ]]'
     MIGRATOR_FORCE_CLOSE_ALL: '$[[ inputs.force_close_all ]]'
@@ -114,12 +133,18 @@ Migrate Renovate Dashboards:
   script:
     - |
       #!/usr/bin/env bash
-      # Close duplicate Renovate "Dependency Dashboard" issues left behind after
-      # a GitLab bot-user change (username change, or access-token rotation which
-      # spawns a brand-new bot user). Renovate finds its dashboard by scanning
-      # only issues created by the currently authenticated user, so after a bot
-      # change the old dashboard is orphaned and a fresh one is opened. This job
-      # closes the orphaned copies and keeps the one the current bot owns.
+      # Migrate duplicate Renovate "Dependency Dashboard" issues left behind
+      # after a GitLab bot-user change (username change, or access-token rotation
+      # which spawns a brand-new bot user). Renovate finds its dashboard by
+      # scanning only issues created by the currently authenticated user, so
+      # after a bot change the old dashboard is orphaned and a fresh (empty) one
+      # is opened.
+      #
+      # When the current bot has no dashboard of its own in a project this job
+      # CLONES the newest orphan to the current bot (via the GitLab issue clone
+      # API, which authors the copy as the caller), preserving its checkbox state
+      # and notes, and then closes the old copies. When the current bot already
+      # owns a dashboard it simply closes the orphans.
       #
       # The mig_* functions below are covered by tests/user-migrator.bats, which
       # sources this block with MIGRATOR_SOURCED=1 so main() does not run. Keep
@@ -132,14 +157,12 @@ Migrate Renovate Dashboards:
       mig_urlenc() { jq -rn --arg v "${1:-}" '$v|@uri'; }
 
       # mig_validate_authors "<keep_author>" "<close_author>"
-      #   -> non-zero with a message unless exactly one of the two is set.
+      #   -> non-zero with a message when BOTH are set (they are mutually
+      #      exclusive). Setting neither is allowed: keep_author then defaults to
+      #      the authenticated user.
       mig_validate_authors() {
         if [ -n "${1:-}" ] && [ -n "${2:-}" ]; then
           echo "Set only one of keep_author / close_author." >&2
-          return 1
-        fi
-        if [ -z "${1:-}" ] && [ -z "${2:-}" ]; then
-          echo "Set one of keep_author / close_author." >&2
           return 1
         fi
       }
@@ -216,6 +239,27 @@ Migrate Renovate Dashboards:
         glab api --method PUT "projects/${1}/issues/${2}?state_event=close" >/dev/null
       }
 
+      # mig_pick_clone_source ; dashboards JSON array on stdin
+      #   -> "<iid>|<author>|<yyyy-mm-dd>" of the most recently updated dashboard,
+      #      i.e. the copy with the freshest checkbox state.
+      mig_pick_clone_source() {
+        jq -r 'sort_by(.updated_at // .created_at) | last
+               | "\(.iid)|\(.author.username // "?")|\((.updated_at // .created_at)[0:10])"'
+      }
+
+      # mig_clone_issue "<project_id>" "<issue_iid>" "<with_notes>"
+      #   -> prints the iid of the freshly cloned issue (authored by the caller).
+      mig_clone_issue() {
+        glab api --method POST \
+          "projects/${1}/issues/${2}/clone?with_notes=${3:-true}&to_project_id=${1}" \
+          | jq -r '.iid'
+      }
+
+      # mig_current_user -> the username the token authenticates as.
+      mig_current_user() {
+        glab api user | jq -r '.username'
+      }
+
       main() {
         set -euo pipefail
 
@@ -232,11 +276,13 @@ Migrate Renovate Dashboards:
 
         mig_validate_authors "${MIGRATOR_KEEP_AUTHOR}" "${MIGRATOR_CLOSE_AUTHOR}" || exit 1
 
-        local EXECUTE ALLOW_SINGLE FORCE_CLOSE_ALL ARCHIVED
+        local EXECUTE ALLOW_SINGLE FORCE_CLOSE_ALL ARCHIVED CLONE CLONE_WITH_NOTES
         EXECUTE="$(mig_bool "${MIGRATOR_EXECUTE}")"
         ALLOW_SINGLE="$(mig_bool "${MIGRATOR_ALLOW_SINGLE}")"
         FORCE_CLOSE_ALL="$(mig_bool "${MIGRATOR_FORCE_CLOSE_ALL}")"
         ARCHIVED="$(mig_bool "${MIGRATOR_INCLUDE_ARCHIVED}")"
+        CLONE="$(mig_bool "${MIGRATOR_CLONE}")"
+        CLONE_WITH_NOTES="$(mig_bool "${MIGRATOR_CLONE_WITH_NOTES}")"
 
         # --- log in to glab ---
         export GITLAB_TOKEN="${TOKEN}"
@@ -245,11 +291,21 @@ Migrate Renovate Dashboards:
         echo "Login to GitLab CLI (${GITLAB_HOST}) ..."
         echo "${GITLAB_TOKEN}" | glab auth login --hostname "${GITLAB_HOST}" --stdin
 
+        # --- resolve the "current bot": keep_author, or the token's own user ---
+        local CURRENT_USER KEEP_AUTHOR
+        CURRENT_USER="$(mig_current_user)"
+        if [ -n "${MIGRATOR_KEEP_AUTHOR}" ] || [ -n "${MIGRATOR_CLOSE_AUTHOR}" ]; then
+          KEEP_AUTHOR="${MIGRATOR_KEEP_AUTHOR}"
+        else
+          KEEP_AUTHOR="${CURRENT_USER}"
+          echo "keep_author defaulted to the authenticated user '@${CURRENT_USER}'."
+        fi
+
         local MODE="DRY-RUN"
         [ "${EXECUTE}" = true ] && MODE="EXECUTE" || true
         echo
-        echo "[${MODE}] ${GITLAB_URL}  title='${TITLE}'"
-        echo "         scope=${MIGRATOR_SCOPE}  keep_author='${MIGRATOR_KEEP_AUTHOR}'  close_author='${MIGRATOR_CLOSE_AUTHOR}'"
+        echo "[${MODE}] ${GITLAB_URL}  title='${TITLE}'  clone=${CLONE}"
+        echo "         scope=${MIGRATOR_SCOPE}  keep_author='${KEEP_AUTHOR}'  close_author='${MIGRATOR_CLOSE_AUTHOR}'  auth=@${CURRENT_USER}"
         echo
 
         local PROJECTS_TSV
@@ -257,8 +313,9 @@ Migrate Renovate Dashboards:
           exit 1
         fi
 
-        local total_close=0 total_kept=0 errors=0 touched=0
+        local total_close=0 total_kept=0 total_clone=0 errors=0 touched=0
         local pid pname dbs count close_json keep_json close_count keep_count
+        local do_clone src_iid src_author src_date new_iid
         local iid author created
 
         while IFS="$(printf '\t')" read -r pid pname; do
@@ -272,18 +329,25 @@ Migrate Renovate Dashboards:
 
           count="$(echo "${dbs}" | jq 'length')"
           [ "${count}" -gt 0 ] || continue
-          if [ "${count}" -lt 2 ] && [ "${ALLOW_SINGLE}" != true ]; then
-            continue
-          fi
 
-          close_json="$(echo "${dbs}" | mig_select_close "${MIGRATOR_KEEP_AUTHOR}" "${MIGRATOR_CLOSE_AUTHOR}")"
+          close_json="$(echo "${dbs}" | mig_select_close "${KEEP_AUTHOR}" "${MIGRATOR_CLOSE_AUTHOR}")"
           keep_json="$(mig_select_keep "${dbs}" "${close_json}")"
           close_count="$(echo "${close_json}" | jq 'length')"
           keep_count="$(echo "${keep_json}" | jq 'length')"
 
           [ "${close_count}" -gt 0 ] || continue
-          if [ "${keep_count}" -eq 0 ] && [ "${FORCE_CLOSE_ALL}" != true ]; then
-            echo "~ ${pname}: would close ALL ${count} dashboards; skipping (set force_close_all: true to override)" >&2
+
+          # Clone when the current bot would be left without any dashboard.
+          do_clone=false
+          if [ "${CLONE}" = true ] && [ "${keep_count}" -eq 0 ]; then
+            do_clone=true
+          fi
+
+          if [ "${do_clone}" != true ] && [ "${count}" -lt 2 ] && [ "${ALLOW_SINGLE}" != true ]; then
+            continue  # a lone orphan, and we are not cloning -> leave it alone
+          fi
+          if [ "${keep_count}" -eq 0 ] && [ "${do_clone}" != true ] && [ "${FORCE_CLOSE_ALL}" != true ]; then
+            echo "~ ${pname}: would close ALL ${count} dashboards; skipping (enable clone, or set force_close_all: true)" >&2
             continue
           fi
 
@@ -292,6 +356,23 @@ Migrate Renovate Dashboards:
           echo "${keep_json}" | jq -r \
             '.[] | "    keep        !\(.iid)  by @\(.author.username // "?")  (\(.created_at[0:10]))"'
           total_kept=$((total_kept + keep_count))
+
+          if [ "${do_clone}" = true ]; then
+            IFS='|' read -r src_iid src_author src_date < <(echo "${close_json}" | mig_pick_clone_source)
+            if [ "${EXECUTE}" = true ]; then
+              if new_iid="$(mig_clone_issue "${pid}" "${src_iid}" "${CLONE_WITH_NOTES}")" && [ -n "${new_iid}" ] && [ "${new_iid}" != null ]; then
+                echo "    cloned      !${src_iid} -> !${new_iid}  now owned by @${CURRENT_USER}  (from @${src_author}, ${src_date})"
+                total_clone=$((total_clone + 1))
+              else
+                echo "    FAILED clone !${src_iid}; leaving ${pname} untouched" >&2
+                errors=$((errors + 1))
+                continue
+              fi
+            else
+              echo "    clone(dry)  !${src_iid} -> new dashboard owned by @${CURRENT_USER}  (from @${src_author}, ${src_date})"
+              total_clone=$((total_clone + 1))
+            fi
+          fi
 
           while IFS='|' read -r iid author created; do
             [ -n "${iid}" ] || continue
@@ -314,7 +395,7 @@ Migrate Renovate Dashboards:
       PROJECT_ROWS
 
         echo
-        echo "Projects touched: ${touched}  |  keep: ${total_kept}  |  $([ "${EXECUTE}" = true ] && echo closed || echo 'to close'): ${total_close}  |  errors: ${errors}"
+        echo "Projects touched: ${touched}  |  keep: ${total_kept}  |  $([ "${EXECUTE}" = true ] && echo cloned || echo 'to clone'): ${total_clone}  |  $([ "${EXECUTE}" = true ] && echo closed || echo 'to close'): ${total_close}  |  errors: ${errors}"
         [ "${errors}" -eq 0 ]
       }
 

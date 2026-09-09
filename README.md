@@ -98,11 +98,13 @@ Renovate's GitLab platform locates its *Dependency Dashboard* by scanning only
 issues **created by the currently authenticated user**. When the bot user
 changes — a username change, or an access-token rotation that spawns a
 brand-new service-account user — the new user cannot see the old dashboard, so
-Renovate opens a fresh one and the previous dashboard is orphaned. The result is
-duplicate dashboards across your projects.
+Renovate opens a fresh (empty) one and the previous dashboard is orphaned. The
+result is duplicate dashboards across your projects, and the manual checkbox
+state / notes on the original are lost.
 
-The `user-migrator` component adds a manual job that closes the orphaned
-dashboards and keeps the one the current bot owns:
+The `user-migrator` component adds a manual job that **clones** the orphaned
+dashboard onto the current bot (so its checkbox state and history survive) and
+then closes the old copies:
 
 ```yaml
 include:
@@ -110,26 +112,31 @@ include:
     inputs:
       # group id or full path to scan (incl. subgroups)
       group: my-group
-      # username of the CURRENT bot; every other dashboard in a project
-      # that has duplicates is closed (robust for token rotation)
-      keep_author: gitlab_renovate_bot
       # flip to true once the dry-run output looks right
       execute: false
 
 stages: [run]
 ```
 
-The job is a **dry-run by default** and prints exactly what it would close; set
-`execute: true` to act. It only touches projects that have more than one open
-dashboard (override with `allow_single: true`) and never closes the last
-remaining dashboard (override with `force_close_all: true`).
+Per project:
 
-Instead of `keep_author` you can pass `close_author` with a comma-separated list
-of the old bot username(s) to close explicitly. The token used is read from the
-CI/CD variable named by `token_variable` (default `RENOVATE_TOKEN`) and must
-belong to the current bot with `api` scope. Use `scope: projects` with
-`projects: a/b,c/d` or `scope: all-membership` to change how target projects are
-discovered.
+* if the current bot **already owns** a dashboard, the orphaned copies are just
+  closed;
+* if it **does not**, the newest orphan is cloned via the GitLab issue clone API
+  (which authors the copy as the caller = the current bot), then the old copies
+  are closed. This makes closing the last dashboard safe, so `force_close_all`
+  is not needed. Set `clone: false` to go back to close-only behaviour.
+
+The job is a **dry-run by default** and prints exactly what it would clone and
+close; set `execute: true` to act.
+
+`keep_author` defaults to the username the token authenticates as — usually
+correct, so you rarely need to set it. Pass it explicitly to name the current
+bot, or pass `close_author` with a comma-separated list of the old bot
+username(s) to close instead. The token is read from the CI/CD variable named by
+`token_variable` (default `RENOVATE_TOKEN`) and must belong to the current bot
+with `api` scope. Use `scope: projects` with `projects: a/b,c/d` or
+`scope: all-membership` to change how target projects are discovered.
 
 ## Setup
 
