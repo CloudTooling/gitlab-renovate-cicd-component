@@ -123,9 +123,9 @@
     {
       customType: 'regex',
       description: 'Update _VERSION variables in Dockerfiles',
-      fileMatch: [
-        '(^|/|\\.)Dockerfile$',
-        '(^|/)Dockerfile\\.[^/]*$',
+      managerFilePatterns: [
+        '/(^|/|\\.)Dockerfile$/',
+        '/(^|/)Dockerfile\\.[^/]*$/',
       ],
       matchStrings: [
         '# renovate: datasource=(?<datasource>[^\\s]+)\\s+depName=(?<depName>[^\\s]+)(?:\\s+allowedVersions=(?<allowedVersions>[^\\s]+))?\\s+(?:ARG|ENV)\\s+(?<argName>[A-Z0-9_]+)=(?<currentValue>[^\\s]+)',
@@ -136,9 +136,9 @@
     {
       customType: 'regex',
       description: 'Update image variables in YAML files',
-      fileMatch: [
-        '\\.y[a]?ml$',
-        '\\.y[a]?ml\\.tpl$',
+      managerFilePatterns: [
+        '/\\.y[a]?ml$/',
+        '/\\.y[a]?ml\\.tpl$/',
       ],
       matchStrings: [
         '# renovate:\\s+datasource=(?<datasource>[^\\s]+)\\s+depName=(?<depName>[^\\s]+)(?:\\s+allowedVersions=(?<allowedVersions>[^\\s]+))?\\s+(?:ARG|ENV)\\s+(?<argName>[A-Z0-9_]+)=(?<currentValue>[^\\s]+)',
@@ -148,9 +148,9 @@
     {
       customType: 'regex',
       description: 'Update version variables in YAML files',
-      fileMatch: [
-        '\\.y[a]?ml$',
-        '\\.y[a]?ml\\.tpl$',
+      managerFilePatterns: [
+        '/\\.y[a]?ml$/',
+        '/\\.y[a]?ml\\.tpl$/',
       ],
       matchStrings: [
         '# renovate: datasource=(?<datasource>.+?) depName=(?<depName>.+?)\\s+(.*?):\\s?(?<currentValue>.+)',
