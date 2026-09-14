@@ -40,6 +40,13 @@ module.exports = {
       matchHost: process.env.CI_SERVER_HOST,
       token: process.env.RENOVATE_TOKEN,
     },
+    // add GHCR Docker Registry if needed
+    {
+      hostType: 'docker',
+      matchHost: 'ghcr.io',
+      username: process.env.GITHUB_COM_USER,
+      password: process.env.GITHUB_COM_TOKEN,
+    },
     {
       hostType: 'docker',
       matchHost: process.env.CI_REGISTRY,
@@ -64,7 +71,7 @@ module.exports = {
 Add the following Tokens as CI/CD:
 
 * `RENOVATE_TOKEN` - Gitlab PAT for Renovate user, can be omitted with Service Accounts, see [##Setup](setup).
-* `GITHUB_TOKEN` - Github access token to omit api rate limit errors
+* `GITHUB_COM_TOKEN` - Github access token to omit api rate limit errors
 
 For hosted npm, e.g. nexus use this:
 
