@@ -20,7 +20,7 @@ include:
 
 default:
   image:
-    name: cloudtooling/dev-buildbox:1.11.2
+    name: cloudtooling/dev-buildbox:1.12.3
     entrypoint: [""]
 
 
