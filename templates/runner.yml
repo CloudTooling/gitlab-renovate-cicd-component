@@ -23,7 +23,7 @@ spec:
     renovate_version:
       type: string
       # renovate: datasource=github-tags depName=renovatebot/renovate
-      default: '44.115.9'
+      default: '44.115.10'
     dry_run:
       type: boolean
       default: true
