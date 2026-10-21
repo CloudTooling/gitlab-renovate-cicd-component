@@ -17,6 +17,13 @@ include:
       # renovate: datasource=github-tags depName=renovatebot/renovate
       renovate_version: '44.149.3'
       renovate_image: 'ghcr.io/renovatebot/renovate'
+  # test the config-validate component against this project's own renovate.json5
+  - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/config-validate@$CI_COMMIT_SHA
+    inputs:
+      renovate_presets:
+        - renovate.json5
+        - templates/config-validate.yml
+        - templates/shared/renovate.yml
 
 default:
   image:

@@ -42,6 +42,7 @@ variables:
   LOG_LEVEL: $[[ inputs.log_level ]]
 
 include:
+  - local: 'templates/shared/sa.yml'
   - local: 'templates/shared/renovate.yml'
     inputs:
       before_script: $[[ inputs.before_script ]]
