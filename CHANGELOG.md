@@ -1,4 +1,12 @@
 
+# [2.0.0](https://gitlab.com/cloudtooling/renovate/compare/v1.2.0...v2.0.0) (2026-10-21)
+
+
+### Features
+
+* Add allow internal ([ea9466a](https://gitlab.com/cloudtooling/renovate/commit/ea9466a9bc55733038726fb144d69d049b79cdf5))
+* Adding config validate template ([4e13df6](https://gitlab.com/cloudtooling/renovate/commit/4e13df6f72bd03cc5cc5b3a14aa84f68107e3acd))
+
 # [1.2.0](https://gitlab.com/cloudtooling/renovate/compare/v1.1.0...v1.2.0) (2026-09-09)
 
 
