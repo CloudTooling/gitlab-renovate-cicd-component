@@ -5,18 +5,21 @@ module.exports = {
       hostType: 'maven',
       matchHost: process.env.CI_SERVER_HOST,
       token: process.env.RENOVATE_TOKEN,
+      allowInternal: true,
     },
     {
       hostType: 'docker',
       matchHost: 'ghcr.io',
       username: process.env.GITHUB_COM_USER,
       password: process.env.GITHUB_COM_TOKEN,
+      allowInternal: true,
     },
     {
       hostType: 'docker',
       matchHost: process.env.CI_REGISTRY,
       username: 'ci',
       password: process.env.RENOVATE_TOKEN,
+      allowInternal: true,
     },
   ],
   registryAliases: {
