@@ -1,4 +1,5 @@
 spec:
+  description: Migrate Gitlab User from existing account to a new account, including Dashboard.
   inputs:
     stage:
       type: string

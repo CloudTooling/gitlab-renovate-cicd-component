@@ -1,4 +1,5 @@
 spec:
+  description: Iterate over all projects in matrix groups where Renovate Gitlab user has access.
   inputs:
     log_level:
       type: string

@@ -1,4 +1,5 @@
 spec:
+  description: Iterate over all projects Renovate Gitlab user has access to.
   inputs:
     log_level:
       type: string
