@@ -1,4 +1,21 @@
 
+## [2.1.0](https://gitlab.com/cloudtooling/renovate/compare/v2.0.0...v2.1.0) (2026-10-28)
+
+### Dependency Updates
+
+* **deps:** Update dependency renovatebot/renovate to v44.190.0 ([a9a6aaf](https://gitlab.com/cloudtooling/renovate/commit/a9a6aaff41d3c6b486d1a8400a3cc63b7914f339))
+
+* **deps:** Update pipeline component ([380a7d7](https://gitlab.com/cloudtooling/renovate/commit/380a7d77305bc79d489df9212cb40e940435c21d))
+
+
+
+### Features
+
+* **Gitlab:** Allow further child pipeline configuration ([8d8b220](https://gitlab.com/cloudtooling/renovate/commit/8d8b220d51e83c1b7d57d7ed80df6194d5c66c46))
+
+
+
+
 # [2.0.0](https://gitlab.com/cloudtooling/renovate/compare/v1.2.0...v2.0.0) (2026-10-21)
 
 
