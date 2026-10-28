@@ -26,6 +26,52 @@ For each group the last leaf is used and then the check iterates the projects in
 
 ![](docs/images/gitlab-autoscaler-II.png)
 
+## Customizing the child pipeline
+
+The checks run in a generated child pipeline, which does not inherit jobs or
+includes from your project. Use `child_include` to add includes to the child
+pipeline and `child_extends` to let the `check` job extend hidden jobs from
+them, e.g. for a shared proxy setup:
+
+```yaml
+include:
+  - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner-autoscale@<VERSION>
+    inputs:
+      child_include:
+        - project: "common/gitlab-ci/helpers"
+          ref: main
+          file: ".gitlab-ci/include.yml"
+      child_extends:
+        - .proxy_setup
+      before_script:
+        - echo "Running Renovate for $GROUP"
+
+stages: [build, test, run]
+```
+
+This generates the following child pipeline:
+
+```yaml
+include: [{"project":"common/gitlab-ci/helpers","ref":"main","file":".gitlab-ci/include.yml"}]
+stages:
+  - run
+check:
+  stage: run
+  parallel:
+    matrix:
+      - GROUP: [group-a, group-b]
+  # ...
+  extends: [".proxy_setup"]
+  before_script:
+    - echo "Running Renovate for $GROUP"
+  script:
+    - renovate
+```
+
+Both inputs default to `[]`, in which case the keys are omitted. Projects
+referenced via `child_include` must be readable by the user triggering the
+pipeline.
+
 
 ## Configuration
 
