@@ -1,5 +1,5 @@
 include:
-  - component: $CI_SERVER_FQDN/m13tLabs/gitlab-helpers/pipeline-ci-components@v0.2.2
+  - component: $CI_SERVER_FQDN/m13tLabs/gitlab-helpers/pipeline-ci-components@v0.3.1
   # include the component located in the current project from the current SHA
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner@$CI_COMMIT_SHA
     inputs:
