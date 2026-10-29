@@ -3,6 +3,7 @@ spec:
     # NOTE: see the using templates for their description
     before_script: {type: array}
     schedule_description:
+      default: '.*'
       description: 'Name of pipeline schedule to run renovate jobs'
 ---
 variables:
