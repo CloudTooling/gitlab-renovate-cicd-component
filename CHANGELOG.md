@@ -1,4 +1,19 @@
 
+## [2.2.0](https://gitlab.com/cloudtooling/renovate/compare/v2.1.0...v2.2.0) (2026-10-29)
+
+### Dependency Updates
+
+* **deps:** Update dependency renovatebot/renovate to v44.190.2 ([341ea8a](https://gitlab.com/cloudtooling/renovate/commit/341ea8a4b73916b8e4b13f24980a49a6b03e2318))
+
+
+
+### Features
+
+* Allow custom schedule description ([49ffbd3](https://gitlab.com/cloudtooling/renovate/commit/49ffbd3a9e4ce474c17ee8424c640bec6d6245eb))
+
+
+
+
 ## [2.1.0](https://gitlab.com/cloudtooling/renovate/compare/v2.0.0...v2.1.0) (2026-10-28)
 
 ### Dependency Updates
