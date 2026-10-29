@@ -4,7 +4,7 @@ include:
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner@$CI_COMMIT_SHA
     inputs:
       # renovate: datasource=github-tags depName=renovatebot/renovate
-      renovate_version: '44.190.0'
+      renovate_version: '44.190.2'
       renovate_image: 'ghcr.io/renovatebot/renovate'
   # test the config-validate component against this project's own renovate.json5
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/config-validate@$CI_COMMIT_SHA
