@@ -2,6 +2,8 @@ spec:
   inputs:
     # NOTE: see the using templates for their description
     before_script: {type: array}
+    schedule_description:
+      description: 'Name of pipeline schedule to run renovate jobs'
 ---
 variables:
   RENOVATE_ENDPOINT: $CI_API_V4_URL
@@ -24,7 +26,7 @@ variables:
   extends: .renovate
   stage: run
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION == "$[[ inputs.schedule_description ]]"
   environment: production
   artifacts:
     when: always

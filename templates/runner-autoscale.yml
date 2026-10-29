@@ -28,6 +28,10 @@ spec:
     dry_run:
       type: boolean
       default: true
+    schedule_description:
+      type: string
+      default: '.*'
+      description: 'Regex (RE2) matching the description of the pipeline schedule that runs the Renovate jobs. Defaults to any schedule.'
     validate:
       type: boolean
       default: true
@@ -143,7 +147,7 @@ Trigger Dry Run:
 Trigger Checks:
   stage: run
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION =~ /^$[[ inputs.schedule_description ]]$/
   trigger:
     include:
       - artifact: child-pipeline.yml

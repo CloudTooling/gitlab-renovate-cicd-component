@@ -26,6 +26,28 @@ For each group the last leaf is used and then the check iterates the projects in
 
 ![](docs/images/gitlab-autoscaler-II.png)
 
+## Restricting the schedule
+
+By default the Renovate checks run for every pipeline schedule. If the project
+has several schedules, use `schedule_description` to only run the checks for
+the matching ones. The value is a regex (RE2) matched against the full schedule
+description:
+
+```yaml
+include:
+  - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner-autoscale@<VERSION>
+    inputs:
+      # exact name
+      schedule_description: 'Renovate nightly'
+      # or any schedule starting with "Renovate"
+      # schedule_description: 'Renovate.*'
+```
+
+Escape regex special characters such as `(`, `)`, `.` or `/` in the
+description, e.g. `Renovate \(nightly\)`. This requires GitLab 17.8 or newer
+(`CI_PIPELINE_SCHEDULE_DESCRIPTION`); on older versions only the default `.*`
+matches.
+
 ## Customizing the child pipeline
 
 The checks run in a generated child pipeline, which does not inherit jobs or
