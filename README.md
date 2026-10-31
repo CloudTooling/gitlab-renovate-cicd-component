@@ -60,11 +60,11 @@ include:
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/runner-autoscale@<VERSION>
     inputs:
       child_include:
-        - project: "common/gitlab-ci/helpers"
+        - project: "common/helpers"
           ref: main
           file: ".gitlab-ci/include.yml"
       child_extends:
-        - .proxy_setup
+        - .prepare_env
       before_script:
         - echo "Running Renovate for $GROUP"
 

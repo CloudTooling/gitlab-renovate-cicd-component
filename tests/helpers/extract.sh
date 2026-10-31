@@ -3,20 +3,24 @@
 # template and print it to stdout. Depends only on awk (busybox awk is fine),
 # so it runs in the same minimal images the tests use.
 #
-# Usage: extract.sh <template.yml> "<job name>"
+# Usage: extract.sh <template.yml> "<job name>" [block index]
+#
+# The optional block index (1-based, default 1) selects which `- |` / `- >`
+# item of the script to print when a job has several.
 set -euo pipefail
 
 file="${1:?template path required}"
 job="${2:?job name required}"
+index="${3:-1}"
 
-awk -v job="${job}:" '
+awk -v job="${job}:" -v index_="${index}" '
   # Top-level job key (column 0).
   $0 == job { in_job = 1; next }
   # Any other top-level key ends the job.
   in_job && /^[^[:space:]]/ { in_job = 0 }
 
   in_job && $0 ~ /^  script:/ { in_script = 1; next }
-  in_script && $0 ~ /^    - [|>]/ { in_block = 1; next }
+  in_script && $0 ~ /^    - [|>]/ { if (++block == index_) in_block = 1; next }
 
   in_block {
     if ($0 == "") { print ""; next }

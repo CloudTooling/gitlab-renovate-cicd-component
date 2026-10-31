@@ -85,7 +85,8 @@ Generate Matrix:
       BEFORE_SCRIPT_SECTION=$([ -s before_script.txt ] && { printf 'before_script:'; awk '{printf "\n    - %s", $0}' before_script.txt; } || echo 'before_script: []')
 
       # include and extends are rendered as JSON flow sequences (valid YAML), omitted when empty
-      CHILD_INCLUDE=$(jq -c '.' <<'CHILD_INCLUDE'
+      # hashes in array inputs are interpolated as Ruby hashes ({:key=>"value"} or {key: "value"}), convert them to JSON
+      CHILD_INCLUDE=$(sed -E 's/:([A-Za-z_][A-Za-z0-9_]*) *=> */"\1":/g; s/" *=> */":/g; s/([{,] *)([A-Za-z_][A-Za-z0-9_]*): /\1"\2": /g' <<'CHILD_INCLUDE' | jq -c '.'
       $[[ inputs.child_include ]]
       CHILD_INCLUDE
       )
