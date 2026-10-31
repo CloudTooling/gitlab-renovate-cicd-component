@@ -1,4 +1,19 @@
 
+## [2.2.1](https://gitlab.com/cloudtooling/renovate/compare/v2.2.0...v2.2.1) (2026-10-31)
+
+### Bug Fixes
+
+* **Autoscaler:** Correcting extends/include for child pipeline ([20d4eaf](https://gitlab.com/cloudtooling/renovate/commit/20d4eaf1d1805481d037ff37318640dbff59727c))
+
+
+
+### Features
+
+* Allow to overwrite curl/jq image ([09055e9](https://gitlab.com/cloudtooling/renovate/commit/09055e9eb12af5fe23a5f4f5fb2dcb356317dcfe))
+
+
+
+
 ## [2.2.0](https://gitlab.com/cloudtooling/renovate/compare/v2.1.0...v2.2.0) (2026-10-29)
 
 ### Dependency Updates
