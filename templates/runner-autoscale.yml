@@ -18,6 +18,9 @@ spec:
         - when: on_success
       type: array
       description: 'Defines the `rules` of the job.'
+    curljq_image:
+      type: string
+      default: 'badouralix/curl-jq'
     renovate_image:
       type: string
       default: 'ghcr.io/renovatebot/renovate'
@@ -49,6 +52,7 @@ spec:
 ---
 variables:
   RENOVATE_IMAGE: $[[ inputs.renovate_image ]]:$[[ inputs.renovate_version ]]
+  CURLJQ_IMAGE: $[[ inputs.curljq_image ]]
   RENOVATE_ONBOARDING_CONFIG: $[[ inputs.onboarding_config ]]
   RENOVATE_LOG_FILE_LEVEL: $[[ inputs.log_level ]]
   LOG_LEVEL: $[[ inputs.log_level ]]
@@ -61,7 +65,7 @@ include:
 
 Generate Matrix:
   stage: .pre
-  image: badouralix/curl-jq
+  image: $CURLJQ_IMAGE
   variables:
     # use common CI/CD vars with override option
     GITLAB_API_URL: '$CI_API_V4_URL'
