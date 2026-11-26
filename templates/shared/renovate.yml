@@ -27,7 +27,7 @@ variables:
   extends: .renovate
   stage: run
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION == "$[[ inputs.schedule_description ]]"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION =~ /^$[[ inputs.schedule_description ]]$/
   environment: production
   artifacts:
     when: always
