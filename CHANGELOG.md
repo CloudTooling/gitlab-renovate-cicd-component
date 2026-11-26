@@ -1,4 +1,13 @@
 
+## [2.2.2](https://gitlab.com/cloudtooling/renovate/compare/v2.2.1...v2.2.2) (2026-11-26)
+
+### Bug Fixes
+
+* Correct rule for renovate schedule ([0bde847](https://gitlab.com/cloudtooling/renovate/commit/0bde8473d2a4733d14913279fe0cc9a4b1d91644))
+
+
+
+
 ## [2.2.1](https://gitlab.com/cloudtooling/renovate/compare/v2.2.0...v2.2.1) (2026-10-31)
 
 ### Bug Fixes
